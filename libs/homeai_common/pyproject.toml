@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "homeai-common"
+version = "0.1.0"
+description = "Shared library for HomeAI Cloud services (auth, service clients, test helpers)."
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic>=2.5",
+  "pydantic-settings>=2.1",
+  "fastapi>=0.110",
+  "httpx>=0.27",
+  "PyJWT[crypto]>=2.8",
+  "cryptography>=42",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["homeai_common*"]
