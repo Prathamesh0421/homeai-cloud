@@ -1,0 +1,81 @@
+# ---------- OS / editors ----------
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ---------- Secrets / environment ----------
+# Never commit real configuration; .env.example is the template.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ---------- Python ----------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.python-version
+pip-wheel-metadata/
+
+# Tooling caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# ---------- Frontend (web/) ----------
+node_modules/
+web/dist/
+web/.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Vitest / Playwright output
+web/coverage/
+web/test-results/
+web/playwright-report/
+web/blob-report/
+web/playwright/.cache/
+
+# ---------- Data, models, demo media ----------
+# Demo clips are generated/downloaded by scripts/fetch_demo_clips.sh (ESC-50 is CC BY-NC; don't redistribute)
+demo_clips/
+# YAMNet / model artifacts are downloaded at image build time or stored in S3.
+# Root-anchored on purpose: services/*/app/models/ holds ORM code and must stay tracked.
+/models/
+*.h5
+*.tflite
+saved_model/
+
+# Local DB dumps / backups
+*.dump
+*.archive.gz
+
+# ---------- Docker / LocalStack ----------
+infra/localstack/volume/
+.localstack/
+docker-compose.override.yml
+
+# ---------- Logs ----------
+logs/
+*.log
