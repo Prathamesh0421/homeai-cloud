@@ -29,6 +29,8 @@ from tests.factories import (
 )
 from tests.fakes import FakeHouseReader, FakeSettingsReader
 
+# STANDIN(C1-02): c1/c4 tables copied from C4 migration 0001 and the C1 plan §2.1. Once C1's
+# migration exists, build them by running the real C1 and C4 migrations and delete this DDL.
 DDL = """
 CREATE SCHEMA IF NOT EXISTS c4;
 CREATE SCHEMA IF NOT EXISTS c1;

@@ -161,6 +161,7 @@ jobs:
       - name: Prepare databases (schemas, extensions)
         if: matrix.pkg.service
         run: |
+          # STANDIN(P0-5): delete the else-branch once infra/db/init.sql exists.
           # Migrations expect their schema to exist already (infra/db/init.sql does this in the
           # stack). Use init.sql when it exists; until then create the schemas directly.
           psql -h localhost -U postgres -d postgres -c "CREATE DATABASE homeai_migrate"

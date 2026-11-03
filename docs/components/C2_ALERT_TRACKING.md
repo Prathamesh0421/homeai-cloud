@@ -282,3 +282,20 @@ with a note. Then a cough during quiet hours is held (no alert). End with Alert 
 ### 10.3 Prep
 Confirm SNS subscriptions for 2–3 team emails (click confirmation links), set quiet hours for the demo time,
 seed rules, pre-open phone browser, have `c2_fake_detection.py` ready as fallback.
+
+---
+## 11. Stand-ins (temporary until teammates' work lands)
+Each one is tagged in code with `# STANDIN(<trigger>)`; list them with `grep -rn STANDIN services .github`.
+When the trigger lands, do the action, delete the tag and tick the row. C2-16 (integration) is the
+deadline for all of them.
+
+| Done | Tag | Stand-in | Where | Trigger | Action |
+|---|---|---|---|---|---|
+| [ ] | `STANDIN(C1-02)` | c1/c4 tables built from copied DDL in tests | `tests/db/test_sql_gateways.py` | C1 migration 0001 (Ekant) | Build them by running the real C1 + C4 migrations in the test DB; delete the DDL |
+| [ ] | `STANDIN(contracts)` | Local `Detection` model for `ai_detections` | `app/gateways/types.py` | `homeai_common/contracts.py` (all owners) | Import `DetectionDoc`; delete the local classes |
+| [ ] | `STANDIN(P0-5)` | Tests connect as the Postgres superuser | `tests/db/conftest.py` | `infra/db/init.sql` roles + grants (Renuka) | Add tests: `c2_reader` reads only the §4.5 tables and cannot write |
+| [ ] | `STANDIN(P0-5)` | CI creates schemas when `init.sql` is missing | `.github/workflows/ci.yml` | `infra/db/init.sql` (Renuka) | CI switches automatically; delete the fallback branch |
+| [ ] | `STANDIN(C1-07)` *(C2-11)* | Playback URL `null` ("clip unavailable") | Alert detail / alert view | C1 `GET /clips/{id}/playback-url` (Ekant) | Call it with service scope `clips:playback` |
+| [ ] | — *(C2-16)* | Detections faked with `c2_fake_detection.py` in integration | demo scripts | C3 worker handoff (Renuka, C3-09) | Run I-2/I-3 with real detections; keep the script as the demo fallback |
+Permanent (not stand-ins): `tests/fakes.py` readers (kept honest by shared tests with the real
+gateways), `homeai_common.testing` keys, `NOTIFIER=log`, `alembic/env.py` creating schema `c2` if missing.

@@ -111,6 +111,8 @@ class DetectionModelRef(BaseModel):
     version: str
 
 
+# STANDIN(contracts): local copy of contract §4.2 until homeai_common.contracts.DetectionDoc
+# exists (docs/05 §2); then import that and delete this class and its two helpers above.
 class Detection(BaseModel):
     """``ai_detections`` document (contract §4.2). ``top_label`` is ``"none"`` when nothing matched."""
 
