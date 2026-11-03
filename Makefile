@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-c4 web migrate
+.PHONY: help lint lint-py lint-web test test-common web migrate
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -7,8 +7,9 @@ RUFF ?= ruff
 help:
 	@echo "HomeAI Cloud (Phase 0). Available targets:"
 	@echo "  make lint        ruff + eslint + tsc"
-	@echo "  make test        pytest across all services"
-	@echo "  make test-c4     pytest for services/c4_dashboard only"
+	@echo "  make test        pytest for libs/homeai_common and every service"
+	@echo "  make test-common pytest for libs/homeai_common only"
+	@echo "  make test-c4     pytest for one service (test-c1 .. test-c4)"
 	@echo "  make web         run Vite dev server (web/)"
 	@echo "  make migrate     run Alembic for every service (once they exist)"
 
@@ -22,11 +23,20 @@ lint-web:
 	@if [ -d web/node_modules ]; then cd web && npm run lint && npm run typecheck; else \
 		echo "web/ not installed; run 'cd web && npm install' first"; fi
 
+# Each package runs separately: libs/ and services/ both have a top-level `tests` package,
+# so collecting them together from the repo root fails.
 test:
-	$(PYTEST)
+	@status=0; for pkg in libs/homeai_common services/*; do \
+		if [ -f $$pkg/pyproject.toml ]; then \
+			echo "== $$pkg"; (cd $$pkg && $(PYTEST) -q) || status=1; \
+		fi; \
+	done; exit $$status
 
-test-c4:
-	cd services/c4_dashboard && $(PYTEST) -q
+test-common:
+	cd libs/homeai_common && $(PYTEST) -q
+
+test-c%:
+	cd services/c$*_* && $(PYTEST) -q
 
 web:
 	cd web && npm run dev

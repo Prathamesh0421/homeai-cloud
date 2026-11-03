@@ -1,0 +1,249 @@
+# HomeAI Cloud CI (docs/03_REPO_AND_INFRA.md §9, P0-11).
+#
+#   discover ─┬─ lint ──────────┬─ test-python (matrix: libs/homeai_common + every services/*)
+#             │                 └─ test-web
+#             └─ build-images (matrix: every services/*/Dockerfile) — after the tests pass
+#
+# New services join the test and image matrices automatically once they have a pyproject.toml
+# / Dockerfile, so nobody has to edit this file to get CI for a new component.
+
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+  COVERAGE_MIN: "70"   # per package (03 §9); app/services/ targets 80% (05 §1)
+
+jobs:
+  discover:
+    name: Discover packages
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.find.outputs.python }}
+      images: ${{ steps.find.outputs.images }}
+      has_web: ${{ steps.find.outputs.has_web }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: find
+        shell: bash
+        run: |
+          # Python packages to test: the shared library plus each service with a pyproject.toml.
+          python=$(
+            { [ -f libs/homeai_common/pyproject.toml ] && echo "libs/homeai_common"
+              for f in services/*/pyproject.toml; do [ -f "$f" ] && dirname "$f"; done; } \
+            | jq -R . | jq -sc 'map({path: ., name: (split("/") | last), service: startswith("services/")})'
+          )
+          images=$(
+            for f in services/*/Dockerfile; do [ -f "$f" ] && dirname "$f"; done \
+            | jq -R . | jq -sc 'map({path: ., name: (split("/") | last)})'
+          )
+          {
+            echo "python=$python"
+            echo "images=$images"
+            echo "has_web=$([ -f web/package.json ] && echo true || echo false)"
+          } >> "$GITHUB_OUTPUT"
+          echo "python: $python"; echo "images: $images"
+
+  lint:
+    name: Lint (ruff, eslint, tsc)
+    needs: discover
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: ruff
+        run: |
+          pip install "ruff==0.17.3"   # pinned: a new ruff release can reformat untouched code
+          ruff check --output-format=github .
+          ruff format --check .
+      - uses: actions/setup-node@v4
+        if: needs.discover.outputs.has_web == 'true'
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: eslint + tsc
+        if: needs.discover.outputs.has_web == 'true'
+        working-directory: web
+        run: |
+          npm ci --no-audit --no-fund
+          npm run lint
+          npm run typecheck
+
+  test-python:
+    name: Test ${{ matrix.pkg.name }}
+    needs: [discover, lint]
+    if: needs.discover.outputs.python != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pkg: ${{ fromJson(needs.discover.outputs.python) }}
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: homeai_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d homeai_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      mongo:
+        image: mongo:7
+        ports: ["27017:27017"]
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      localstack:
+        image: localstack/localstack:3
+        env:
+          SERVICES: s3,sns,secretsmanager
+        ports: ["4566:4566"]
+    env:
+      ENV: test
+      DEMO_MODE: "1"
+      AWS_REGION: us-west-2
+      AWS_ENDPOINT_URL: http://localhost:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      S3_BUCKET: homeai-ci
+      PGPASSWORD: postgres
+      # Tests run as the superuser against throwaway databases; each component reads its own var.
+      DATABASE_URL_C1: postgresql+psycopg://postgres:postgres@localhost:5432/homeai_test
+      DATABASE_URL_C2: postgresql+psycopg://postgres:postgres@localhost:5432/homeai_test
+      DATABASE_READER_URL_C2: postgresql+psycopg://postgres:postgres@localhost:5432/homeai_test
+      DATABASE_URL_C3: postgresql+psycopg://postgres:postgres@localhost:5432/homeai_test
+      DATABASE_READER_URL_C3: postgresql+psycopg://postgres:postgres@localhost:5432/homeai_test
+      DATABASE_URL_C4: postgresql+psycopg://postgres:postgres@localhost:5432/homeai_test
+      MONGO_URL_C1: mongodb://localhost:27017/homeai_test
+      MONGO_URL_C2_READER: mongodb://localhost:27017/homeai_test
+      MONGO_URL_C3: mongodb://localhost:27017/homeai_test
+      MONGO_URL_C4: mongodb://localhost:27017/homeai_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: |
+            libs/homeai_common/pyproject.toml
+            ${{ matrix.pkg.path }}/pyproject.toml
+
+      - name: Install
+        run: |
+          pip install -e "libs/homeai_common[test]"
+          if [ "${{ matrix.pkg.service }}" = "true" ]; then
+            if grep -q '^dev *=' "${{ matrix.pkg.path }}/pyproject.toml"; then
+              pip install -e "${{ matrix.pkg.path }}[dev]"
+            else
+              pip install -e "${{ matrix.pkg.path }}"
+            fi
+          fi
+          pip install "pytest>=8" "pytest-cov>=5"
+
+      - name: Prepare databases (schemas, extensions)
+        if: matrix.pkg.service
+        run: |
+          # Migrations expect their schema to exist already (infra/db/init.sql does this in the
+          # stack). Use init.sql when it exists; until then create the schemas directly.
+          psql -h localhost -U postgres -d postgres -c "CREATE DATABASE homeai_migrate"
+          for db in homeai_test homeai_migrate; do
+            if [ -f infra/db/init.sql ]; then
+              psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d "$db" -f infra/db/init.sql
+            else
+              psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d "$db" -c \
+                "CREATE EXTENSION IF NOT EXISTS citext;
+                 CREATE SCHEMA IF NOT EXISTS c1; CREATE SCHEMA IF NOT EXISTS c2;
+                 CREATE SCHEMA IF NOT EXISTS c3; CREATE SCHEMA IF NOT EXISTS c4;"
+            fi
+          done
+
+      - name: Migrations round-trip (upgrade, downgrade, upgrade, drift check)
+        if: matrix.pkg.service && hashFiles(format('{0}/alembic.ini', matrix.pkg.path)) != ''
+        working-directory: ${{ matrix.pkg.path }}
+        run: |
+          # Separate database so the tests below start from a clean schema.
+          for var in $(compgen -e | grep '^DATABASE_URL_'); do
+            export "$var=${!var%/homeai_test}/homeai_migrate"
+          done
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
+          alembic check
+
+      - name: pytest
+        working-directory: ${{ matrix.pkg.path }}
+        run: |
+          # Each package runs on its own: libs/ and services/ both have a top-level `tests`
+          # package, so collecting them together from the repo root fails.
+          cov=$([ "${{ matrix.pkg.service }}" = "true" ] && echo app || echo homeai_common)
+          pytest -q --cov="$cov" --cov-report=term-missing --cov-report=xml \
+            --cov-fail-under="$COVERAGE_MIN"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-${{ matrix.pkg.name }}
+          path: ${{ matrix.pkg.path }}/coverage.xml
+          if-no-files-found: ignore
+
+  test-web:
+    name: Test web
+    needs: [discover, lint]
+    if: needs.discover.outputs.has_web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm test
+      - run: npm run build
+
+  build-images:
+    name: Build image ${{ matrix.svc.name }}
+    needs: [discover, lint, test-python, test-web]
+    # Build even when a matrix side was skipped (e.g. no web yet), but never after a failure.
+    if: >-
+      always() && needs.discover.outputs.images != '[]' &&
+      !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        svc: ${{ fromJson(needs.discover.outputs.images) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.svc.path }}/Dockerfile
+          push: false
+          tags: homeai/${{ matrix.svc.name }}:ci
+          # Cache per service; matters most for the large TensorFlow image (c3_data).
+          cache-from: type=gha,scope=${{ matrix.svc.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.svc.name }}
