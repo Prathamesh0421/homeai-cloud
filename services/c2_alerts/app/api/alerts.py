@@ -1,19 +1,34 @@
-"""Alerts: list, stats, detail and lifecycle actions (static paths before /{alert_id})."""
+"""Alerts: list, stats, evaluate (C3), detail and lifecycle actions (static paths first)."""
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
-from homeai_common.auth import Principal, require_roles
+from fastapi import APIRouter, Depends, Query, Response
+from homeai_common.auth import Principal, require_roles, require_scope
 from homeai_common.errors import ErrorEnvelope
 from homeai_common.pagination import Envelope, Page, PageParams, data_response, page_response
 from sqlalchemy.orm import Session
 
-from app.api.deps import alert_reader, get_detection_reader, get_house_reader, get_session
+from app.api.deps import (
+    alert_reader,
+    get_clock,
+    get_detection_reader,
+    get_house_reader,
+    get_session,
+    get_settings_reader,
+)
 from app.constants import ALERT_STATUSES
-from app.gateways.types import DetectionReader, HouseReader
+from app.gateways.types import (
+    DependencyUnavailableError,
+    DetectionReader,
+    HouseReader,
+    SettingsReader,
+)
+from app.repositories.alert_repo import AlertRepository
+from app.repositories.rule_repo import RuleRepository
 from app.schemas.alert import (
     AlertDetail,
     AlertSummary,
@@ -23,9 +38,12 @@ from app.schemas.alert import (
     StatBucket,
 )
 from app.schemas.common import UuidStr
+from app.schemas.evaluate import EvaluateRequest, EvaluateResult
 from app.services.access_policy import alert_scope
 from app.services.alert_service import AlertService
+from app.services.evaluate_service import evaluate_detection
 from app.services.lifecycle import AlertLifecycleService
+from app.services.rule_engine import RuleEngine
 from app.services.rule_service import invalid
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
@@ -126,6 +144,46 @@ def alert_stats(
         statuses=_statuses(status),
     )
     return data_response(buckets)
+
+
+@router.post(
+    "/evaluate",
+    status_code=201,
+    response_model=Envelope[EvaluateResult],
+    response_model_exclude_none=True,
+    responses={
+        200: {"description": "duplicate (same detection) or no_alert with a reason"},
+        401: {"model": ErrorEnvelope},
+        403: {"model": ErrorEnvelope},
+        422: {"model": ErrorEnvelope, "description": "unknown detection, wrong house, bad payload"},
+        503: {"model": ErrorEnvelope, "description": "C1/C3/C4 unavailable: retry (2/4/8 s)"},
+    },
+    summary="Evaluate a C3 detection against the rules (service scope alerts:evaluate)",
+)
+def evaluate(
+    body: EvaluateRequest,
+    response: Response,
+    _: Principal = Depends(require_scope("alerts:evaluate")),
+    session: Session = Depends(get_session),
+    houses: HouseReader = Depends(get_house_reader),
+    settings_reader: SettingsReader = Depends(get_settings_reader),
+    detections: DetectionReader | None = Depends(get_detection_reader),
+    clock: Callable[[], datetime] = Depends(get_clock),
+):
+    if detections is None:
+        raise DependencyUnavailableError("c3", "MONGO_URL_C2_READER not set")
+    engine = RuleEngine(
+        alerts=AlertRepository(session),
+        rules=RuleRepository(session),
+        detections=detections,
+        houses=houses,
+        settings=settings_reader,
+        clock=clock,
+    )
+    outcome = evaluate_detection(engine, AlertLifecycleService(session), body)
+    if not outcome.created:
+        response.status_code = 200
+    return data_response(outcome.result)
 
 
 @router.get(

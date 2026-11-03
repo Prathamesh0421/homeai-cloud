@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from datetime import datetime
 
 from fastapi import Depends, HTTPException, Request
 from homeai_common import db
@@ -11,8 +12,15 @@ from homeai_common.mongo import get_mongo_db
 from sqlalchemy.orm import Session
 
 from app.gateways.c1_house_gateway import C1HouseGateway
+from app.gateways.c4_settings_gateway import C4SettingsGateway
 from app.gateways.detection_gateway import COLLECTION, MongoDetectionGateway
-from app.gateways.types import DependencyUnavailableError, DetectionReader, HouseReader
+from app.gateways.types import (
+    DependencyUnavailableError,
+    DetectionReader,
+    HouseReader,
+    SettingsReader,
+)
+from app.services.quiet_hours import utc_now
 from app.settings import Settings
 
 # Read/write session as c2_app.
@@ -56,3 +64,12 @@ def alert_reader(principal: Principal = Depends(current_principal)) -> Principal
     raise HTTPException(
         status_code=403, detail={"code": "forbidden", "message": "not allowed to read alerts"}
     )
+
+
+def get_settings_reader(session: Session = Depends(get_reader_session)) -> SettingsReader:
+    return C4SettingsGateway(session)
+
+
+def get_clock() -> Callable[[], datetime]:
+    """Current UTC time source (tests override it to pin quiet hours)."""
+    return utc_now

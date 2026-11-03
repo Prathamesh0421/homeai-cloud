@@ -74,3 +74,13 @@ def test_detection_reader_wiring():
     assert isinstance(reader, MongoDetectionGateway)
     assert reader.collection.full_name == "homeai.ai_detections"
     assert get_detection_reader(Settings(mongo_reader_url=None)) is None
+
+
+def test_settings_reader_and_clock_providers():
+    from app.api.deps import get_clock, get_settings_reader
+    from app.gateways.c4_settings_gateway import C4SettingsGateway
+
+    sentinel = object()
+    reader = get_settings_reader(sentinel)
+    assert isinstance(reader, C4SettingsGateway) and reader.session is sentinel
+    assert get_clock()().utcoffset().total_seconds() == 0
