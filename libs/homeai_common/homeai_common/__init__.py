@@ -1,7 +1,8 @@
-"""HomeAI Cloud shared library.
+"""HomeAI Cloud shared library (docs/03_REPO_AND_INFRA.md §2).
 
-Phase 0 scope: auth, service_client, testing. Other modules (config, errors,
-pagination, logging, db, mongo, s3, health) are owned by Prathamesh and land in P0-3.
+Modules: config, errors, pagination, logging, health, db, mongo, s3 (P0-3) and
+auth, service_client, testing (P0-4). Import from the submodules, e.g.
+``from homeai_common.errors import ApiError``.
 """
 
 __version__ = "0.1.0"

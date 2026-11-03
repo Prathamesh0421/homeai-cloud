@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "homeai-common"
 version = "0.1.0"
-description = "Shared library for HomeAI Cloud services (auth, service clients, test helpers)."
+description = "Shared library for HomeAI Cloud services (config, errors, auth, pagination, logging, db, mongo, s3, health, service clients, test helpers)."
 requires-python = ">=3.11"
 dependencies = [
   "pydantic>=2.5",
@@ -14,7 +14,15 @@ dependencies = [
   "httpx>=0.27",
   "PyJWT[crypto]>=2.8",
   "cryptography>=42",
+  "SQLAlchemy>=2.0",
+  "psycopg[binary]>=3.1",
+  "pymongo>=4.6",
+  "boto3>=1.34",
+  "python-json-logger>=2.0",
 ]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "pytest-cov>=5"]
 
 [tool.setuptools.packages.find]
 where = ["."]
