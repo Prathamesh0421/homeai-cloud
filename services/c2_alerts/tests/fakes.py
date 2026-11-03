@@ -77,3 +77,39 @@ class FakeDetectionReader:
         if self.down:
             raise DependencyUnavailableError("c3")
         return self._detections.get(detection_id)
+
+
+class FakeNotifier:
+    """Records what would be sent; can leave contacts unconfirmed or make SNS fail."""
+
+    def __init__(self) -> None:
+        from app.gateways.notifier import NotifierError, Subscription
+
+        self._error = NotifierError
+        self._subscription = Subscription
+        self.pending: set[str] = set()  # emails whose subscription is not confirmed yet
+        self.fail_publish: set[str] = set()  # contact ids whose publish raises
+        self.fail_topic = False
+        self.published: list[dict] = []
+
+    def ensure_topic(self, house_id: str) -> str:
+        if self.fail_topic:
+            raise self._error("sns create_topic failed: Throttling")
+        return f"arn:aws:sns:us-west-2:000000000000:homeai-house-{house_id}"
+
+    def ensure_subscription(self, topic: str, email: str, contact_id: str):
+        return self._subscription(contact_id, email, confirmed=email not in self.pending)
+
+    def publish(self, topic, message, *, contact_id, alert_id, severity) -> str:
+        if contact_id in self.fail_publish:
+            raise self._error("sns publish failed: InternalError")
+        self.published.append(
+            {
+                "topic": topic,
+                "contact_id": contact_id,
+                "alert_id": alert_id,
+                "severity": severity,
+                "message": message,
+            }
+        )
+        return f"msg-{len(self.published)}"

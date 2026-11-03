@@ -18,10 +18,13 @@ from app.api.deps import (
     get_demo_links,
     get_detection_reader,
     get_house_reader,
+    get_links,
+    get_notifier,
     get_session,
     get_settings_reader,
 )
 from app.constants import ALERT_STATUSES
+from app.gateways.notifier import Notifier
 from app.gateways.types import (
     DependencyUnavailableError,
     DetectionReader,
@@ -44,6 +47,7 @@ from app.services.access_policy import alert_scope
 from app.services.alert_service import AlertService
 from app.services.evaluate_service import evaluate_detection
 from app.services.lifecycle import AlertLifecycleService
+from app.services.notification_service import NotificationService
 from app.services.rule_engine import RuleEngine
 from app.services.rule_service import invalid
 from app.services.signed_link import SignedLinkService
@@ -172,6 +176,8 @@ def evaluate(
     settings_reader: SettingsReader = Depends(get_settings_reader),
     detections: DetectionReader | None = Depends(get_detection_reader),
     clock: Callable[[], datetime] = Depends(get_clock),
+    notifier: Notifier = Depends(get_notifier),
+    links: SignedLinkService = Depends(get_links),
 ):
     if detections is None:
         raise DependencyUnavailableError("c3", "MONGO_URL_C2_READER not set")
@@ -183,7 +189,15 @@ def evaluate(
         settings=settings_reader,
         clock=clock,
     )
-    outcome = evaluate_detection(engine, AlertLifecycleService(session), body)
+    notifications = NotificationService(
+        session=session,
+        notifier=notifier,
+        links=links,
+        contacts=settings_reader,
+        houses=houses,
+        clock=clock,
+    )
+    outcome = evaluate_detection(engine, AlertLifecycleService(session), body, notifications.notify)
     if not outcome.created:
         response.status_code = 200
     return data_response(outcome.result)

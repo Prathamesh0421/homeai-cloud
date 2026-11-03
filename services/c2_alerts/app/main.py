@@ -14,7 +14,9 @@ from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
 from app.api import alert_view, alerts, rules
+from app.gateways.notifier import LogNotifier, Notifier
 from app.gateways.secrets_gateway import AlertViewKeyProvider
+from app.gateways.sns_gateway import SnsGateway
 from app.gateways.types import DependencyUnavailableError
 from app.services.rate_limit import SlidingWindowLimiter
 from app.services.signed_link import SignedLinkService
@@ -38,6 +40,12 @@ async def _dependency_unavailable(_: Request, exc: DependencyUnavailableError) -
             "dependency_unavailable", f"{exc.source} is unavailable", {"source": exc.source}
         ),
     )
+
+
+def make_notifier(settings: Settings) -> Notifier:
+    if settings.notifier == "sns":
+        return SnsGateway(region=settings.aws_region, endpoint_url=settings.aws_endpoint)
+    return LogNotifier()
 
 
 def create_app(
@@ -76,6 +84,7 @@ def create_app(
         ),
         public_base_url=settings.public_base_url,
     )
+    app.state.notifier = make_notifier(settings)
     app.state.alert_view_limiter = SlidingWindowLimiter(
         settings.alert_view_rate_limit_per_min, window_s=60
     )

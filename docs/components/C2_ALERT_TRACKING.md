@@ -186,7 +186,7 @@ set `acknowledged_at`/`resolved_at`, append history with actor id, role, note. O
    d. Else build link `PUBLIC_BASE_URL/alert-view/<token>` (token §4.4), publish with `MessageAttributes
       {contact_id, alert_id, severity}` → `sent` + `sns_message_id`; on error → `failed`, attempt 1, next +1 min.
 3. `NOTIFIER=log` (local): same flow but writes the email (subject, body, link) to the log and marks `sent`.
-Email subject: `[HomeAI] CRITICAL Smoke alarm — Maple St`; body: room, time (UTC + house local), label +
+Email subject: `[HomeAI] CRITICAL Smoke alarm - Maple St` (ASCII: SNS rejects non-ASCII subjects; CHANGELOG 2026-11-03); body: room, time (UTC + house local), label +
 confidence, link, link expiry, "If someone is in danger call 911".
 
 ### 4.4 Signed link (`SignedLinkService`)
@@ -198,7 +198,7 @@ token = `payload.sig`; `exp = triggered_at + 24h`. Verify: split (404), decode (
 ### 4.5 Jobs (APScheduler in the API process; guard with a Postgres advisory lock so only one runs)
 | Job | Every | Does |
 |---|---|---|
-| NotificationRetry | 60 s | `failed` email notifications with `attempt_count < 3` and `next_attempt_at ≤ now` → re-check subscription, republish; backoff 1, 2, 4 min; after 3 attempts leave `failed` |
+| NotificationRetry | 60 s | `failed` email notifications with `attempt_count < 3` and `next_attempt_at ≤ now` → re-check subscription, republish; at most 3 attempts in total: next try +1 min after attempt 1, +2 min after attempt 2, then leave `failed` |
 | ContactSubscriptionSync | 5 min | for houses with contacts: ensure topic + subscription per contact (filter policy), unsubscribe removed contacts; logs pending confirmations |
 
 ---

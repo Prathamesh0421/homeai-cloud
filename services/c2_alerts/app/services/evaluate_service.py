@@ -1,15 +1,17 @@
-"""``POST /alerts/evaluate``: decide, raise the alert exactly once, answer per contract 4.3.
-
-Notifications (in-app record + contact emails) are added after the commit in C2-09.
-"""
+"""``POST /alerts/evaluate``: decide, raise the alert exactly once, notify, answer per 4.3."""
 
 from __future__ import annotations
 
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 
+from app.models.orm import Alert
 from app.schemas.evaluate import EvaluateRequest, EvaluateResult
 from app.services.lifecycle import AlertLifecycleService
 from app.services.rule_engine import RuleEngine
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -19,8 +21,13 @@ class EvaluateOutcome:
 
 
 def evaluate_detection(
-    engine: RuleEngine, lifecycle: AlertLifecycleService, req: EvaluateRequest
+    engine: RuleEngine,
+    lifecycle: AlertLifecycleService,
+    req: EvaluateRequest,
+    notify: Callable[[Alert], object] | None = None,
 ) -> EvaluateOutcome:
+    """``notify`` runs once, after the new alert is committed; its failures never change the
+    answer to C3 (the alert exists and shows in-app; email retries are the job's business)."""
     decision, detection = engine.evaluate(req)
 
     if decision.duplicate:
@@ -36,6 +43,11 @@ def evaluate_detection(
         return EvaluateOutcome(
             EvaluateResult(decision="alert", alert_id=raised.alert.alert_id, duplicate=True), False
         )
+    if notify is not None:
+        try:
+            notify(raised.alert)
+        except Exception:
+            logger.exception("notification failed", extra={"alert_id": raised.alert.alert_id})
     return EvaluateOutcome(
         EvaluateResult(
             decision="alert",

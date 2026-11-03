@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.gateways.c1_house_gateway import C1HouseGateway
 from app.gateways.c4_settings_gateway import C4SettingsGateway
 from app.gateways.detection_gateway import COLLECTION, MongoDetectionGateway
+from app.gateways.notifier import Notifier
 from app.gateways.types import (
     DependencyUnavailableError,
     DetectionReader,
@@ -21,6 +22,7 @@ from app.gateways.types import (
     SettingsReader,
 )
 from app.services.quiet_hours import utc_now
+from app.services.signed_link import SignedLinkService
 from app.settings import Settings
 
 # Read/write session as c2_app.
@@ -55,6 +57,15 @@ def get_detection_reader(settings: Settings = Depends(get_app_settings)) -> Dete
 def get_demo_links(request: Request, settings: Settings = Depends(get_app_settings)):
     """Signed-link service for ``view_link`` in alert detail, only when DEMO_MODE=1."""
     return request.app.state.links if settings.demo_mode else None
+
+
+def get_notifier(request: Request) -> Notifier:
+    """SNS or log notifier, built once in ``create_app`` from NOTIFIER."""
+    return request.app.state.notifier
+
+
+def get_links(request: Request) -> SignedLinkService:
+    return request.app.state.links
 
 
 ALERT_READER_ROLES = frozenset({"house_owner", "cloud_staff"})
