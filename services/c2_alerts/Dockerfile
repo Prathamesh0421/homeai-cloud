@@ -21,4 +21,4 @@ USER c2
 ENV RUN_MIGRATIONS=0
 EXPOSE 8002
 
-CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS\" = \"1\" ]; then alembic upgrade head; fi; exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8002 --proxy-headers"]
+CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS\" = \"1\" ]; then alembic upgrade head; fi; exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8002 --proxy-headers --forwarded-allow-ips='*'"]

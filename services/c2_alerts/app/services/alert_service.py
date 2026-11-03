@@ -36,6 +36,7 @@ from app.schemas.alert import (
     TimelineEntry,
 )
 from app.services.lifecycle import allowed_actions
+from app.services.signed_link import SignedLinkService
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +60,7 @@ class AlertService:
     session: Session
     houses: HouseReader
     detections: DetectionReader | None
+    view_links: SignedLinkService | None = None  # set only in DEMO_MODE (C2 plan §3)
 
     @property
     def alerts(self) -> AlertRepository:
@@ -66,7 +68,7 @@ class AlertService:
 
     # --- names (best effort: C1 down must not break alert pages) ------------------------------
 
-    def _names(self, alerts: Sequence[Alert]) -> tuple[dict[str, House], dict[str, Room]]:
+    def names(self, alerts: Sequence[Alert]) -> tuple[dict[str, House], dict[str, Room]]:
         try:
             return (
                 self.houses.houses(a.house_id for a in alerts),
@@ -125,12 +127,12 @@ class AlertService:
             offset=offset,
             limit=limit,
         )
-        houses, rooms = self._names(rows)
+        houses, rooms = self.names(rows)
         return [AlertSummary(**self._summary_fields(a, houses, rooms)) for a in rows], total
 
     # --- detail -------------------------------------------------------------------------------
 
-    def _evidence(self, alert: Alert) -> Evidence:
+    def evidence(self, alert: Alert) -> Evidence:
         detection = None
         if self.detections is not None:
             try:
@@ -158,8 +160,18 @@ class AlertService:
             threshold=alert.threshold,
         )
 
+    def _demo_link(self, alert: Alert, contact_id: str | None) -> str | None:
+        if self.view_links is None or contact_id is None:
+            return None
+        try:
+            return self.view_links.link(
+                self.view_links.issue(alert.alert_id, contact_id, alert.triggered_at)
+            )
+        except DependencyUnavailableError:
+            return None
+
     def detail_of(self, alert: Alert) -> AlertDetail:
-        houses, rooms = self._names([alert])
+        houses, rooms = self.names([alert])
         timeline = [
             TimelineEntry(
                 from_status=h.from_status,
@@ -183,6 +195,7 @@ class AlertService:
                 last_error=n.last_error,
                 created_at=n.created_at,
                 sent_at=n.sent_at,
+                view_link=self._demo_link(alert, n.contact_id) if n.channel == "email" else None,
             )
             for n in NotificationRepository(self.session).list_for_alert(alert.alert_id)
         ]
@@ -195,7 +208,7 @@ class AlertService:
             resolved_at=alert.resolved_at,
             updated_at=alert.updated_at,
             allowed_actions=allowed_actions(alert.status),
-            evidence=self._evidence(alert),
+            evidence=self.evidence(alert),
             timeline=timeline,
             notifications=notifications,
         )

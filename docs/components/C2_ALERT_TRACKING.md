@@ -299,7 +299,7 @@ deadline for all of them.
 | [ ] | `STANDIN(contracts)` | Local `Detection` model for `ai_detections` | `app/gateways/types.py` | `homeai_common/contracts.py` (all owners) | Import `DetectionDoc`; delete the local classes |
 | [ ] | `STANDIN(P0-5)` | Tests connect as the Postgres superuser | `tests/db/conftest.py` | `infra/db/init.sql` roles + grants (Renuka) | Add tests: `c2_reader` reads only the §4.5 tables and cannot write |
 | [ ] | `STANDIN(P0-5)` | CI creates schemas when `init.sql` is missing | `.github/workflows/ci.yml` | `infra/db/init.sql` (Renuka) | CI switches automatically; delete the fallback branch |
-| [ ] | `STANDIN(C1-07)` *(C2-11)* | Playback URL `null` ("clip unavailable") | Alert detail / alert view | C1 `GET /clips/{id}/playback-url` (Ekant) | Call it with service scope `clips:playback` |
+| [ ] | `STANDIN(C1-07)` *(C2-11)* | Playback URL `null` ("clip unavailable") | `app/services/alert_view.py` (`clip_url`); alert detail in C2-11 | C1 `GET /clips/{id}/playback-url` (Ekant) | Call it with service scope `clips:playback` |
 | [ ] | — *(C2-16)* | Detections faked with `c2_fake_detection.py` in integration | demo scripts | C3 worker handoff (Renuka, C3-09) | Run I-2/I-3 with real detections; keep the script as the demo fallback |
 Permanent (not stand-ins): `tests/fakes.py` readers (kept honest by shared tests with the real
 gateways), `homeai_common.testing` keys, `NOTIFIER=log`, `alembic/env.py` creating schema `c2` if missing.

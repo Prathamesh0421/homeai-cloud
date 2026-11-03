@@ -85,6 +85,9 @@ class NotificationOut(BaseModel):
     last_error: str | None
     created_at: datetime
     sent_at: datetime | None
+    view_link: str | None = Field(
+        default=None, description="Signed alert-view link for this contact; DEMO_MODE only."
+    )
 
 
 class AlertDetail(AlertSummary):

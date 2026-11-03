@@ -52,6 +52,11 @@ def get_detection_reader(settings: Settings = Depends(get_app_settings)) -> Dete
     return MongoDetectionGateway(get_mongo_db(settings.mongo_reader_url)[COLLECTION])
 
 
+def get_demo_links(request: Request, settings: Settings = Depends(get_app_settings)):
+    """Signed-link service for ``view_link`` in alert detail, only when DEMO_MODE=1."""
+    return request.app.state.links if settings.demo_mode else None
+
+
 ALERT_READER_ROLES = frozenset({"house_owner", "cloud_staff"})
 
 

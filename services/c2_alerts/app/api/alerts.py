@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import (
     alert_reader,
     get_clock,
+    get_demo_links,
     get_detection_reader,
     get_house_reader,
     get_session,
@@ -45,6 +46,7 @@ from app.services.evaluate_service import evaluate_detection
 from app.services.lifecycle import AlertLifecycleService
 from app.services.rule_engine import RuleEngine
 from app.services.rule_service import invalid
+from app.services.signed_link import SignedLinkService
 
 router = APIRouter(prefix="/api/v1/alerts", tags=["alerts"])
 
@@ -66,8 +68,9 @@ def _service(
     session: Session = Depends(get_session),
     houses: HouseReader = Depends(get_house_reader),
     detections: DetectionReader | None = Depends(get_detection_reader),
+    demo_links: SignedLinkService | None = Depends(get_demo_links),
 ) -> AlertService:
-    return AlertService(session, houses, detections)
+    return AlertService(session, houses, detections, view_links=demo_links)
 
 
 def _utc(value: datetime | None) -> datetime | None:

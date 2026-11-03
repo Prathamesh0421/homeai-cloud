@@ -31,6 +31,8 @@ def settings(monkeypatch) -> Settings:
         database_reader_url=None,
         mongo_reader_url=None,
         git_sha="test-sha",
+        demo_mode=False,
+        alert_view_key="a2V5LWZvci1jMi10ZXN0cy0wMDAwMDAwMDAwMDAwMDA=",  # base64, 32 bytes
     )
 
 

@@ -13,8 +13,11 @@ from homeai_common.errors import error_envelope, install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
-from app.api import alerts, rules
+from app.api import alert_view, alerts, rules
+from app.gateways.secrets_gateway import AlertViewKeyProvider
 from app.gateways.types import DependencyUnavailableError
+from app.services.rate_limit import SlidingWindowLimiter
+from app.services.signed_link import SignedLinkService
 from app.settings import SERVICE_NAME, Settings, get_settings
 
 
@@ -63,6 +66,19 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.links = SignedLinkService(
+        keys=AlertViewKeyProvider(
+            secret_id=settings.alert_view_key_secret,
+            region=settings.aws_region,
+            endpoint_url=settings.aws_endpoint,
+            override_b64=settings.alert_view_key,
+            demo_mode=settings.demo_mode,
+        ),
+        public_base_url=settings.public_base_url,
+    )
+    app.state.alert_view_limiter = SlidingWindowLimiter(
+        settings.alert_view_rate_limit_per_min, window_s=60
+    )
     install_error_handlers(app)
     app.add_exception_handler(DependencyUnavailableError, _dependency_unavailable)
     app.add_middleware(RequestIdMiddleware)
@@ -75,5 +91,6 @@ def create_app(
         )
     )
     app.include_router(alerts.router)
+    app.include_router(alert_view.router)
     app.include_router(rules.router)
     return app

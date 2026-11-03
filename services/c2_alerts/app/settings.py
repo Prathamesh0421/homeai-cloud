@@ -8,6 +8,7 @@
 | service_client_secret | ``C2_SERVICE_CLIENT_SECRET`` or ``SERVICE_CLIENT_SECRET_C2`` |
 | notifier | ``NOTIFIER`` (``log`` locally, ``sns`` on AWS) |
 | alert_view_key_secret | ``C2_ALERT_VIEW_KEY_SECRET`` (Secrets Manager id of the HMAC key) |
+| alert_view_key | ``C2_ALERT_VIEW_KEY`` (base64 key; local override of Secrets Manager) |
 | c1_base_url | ``C1_BASE_URL`` (playback URLs) |
 """
 
@@ -36,6 +37,9 @@ class Settings(BaseServiceSettings):
 
     notifier: Literal["log", "sns"] = Field(default="log", validation_alias="NOTIFIER")
     alert_view_key_secret: str = "homeai/alert-view-hmac"
+    # Local override for the HMAC key (base64), skipping Secrets Manager: C2_ALERT_VIEW_KEY.
+    alert_view_key: str | None = None
+    alert_view_rate_limit_per_min: int = 60
     c1_base_url: str = Field(default="http://c1-iot:8001", validation_alias="C1_BASE_URL")
 
 
