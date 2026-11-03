@@ -154,9 +154,9 @@ Rule validation: `alert_type_code` exists; `trigger_labels` ⊆ the 7 home label
 5  best_miss = "no_rule_match"
 6  for rule in rules:
        t = rule.alert_type
+       if d.top_label not in rule.trigger_labels: continue          # label first (CHANGELOG 2026-11-03)
        if t.service_code not in settings.enabled_services: best_miss = max(best_miss,"service_disabled"); continue
-       if d.top_label not in rule.trigger_labels: continue
-       thr = clamp(rule.min_confidence + SENS[settings.sensitivity], 0.05, 0.95)   # low +0.10, medium 0, high -0.10
+       thr = round(clamp(rule.min_confidence + SENS[settings.sensitivity], 0.05, 0.95), 2)   # low +0.10, medium 0, high -0.10
        if d.top_confidence < thr: best_miss = max(best_miss,"below_threshold"); continue
        if rule.room_id and rule.room_id != d.room_id: best_miss = max(best_miss,"room_mismatch"); continue
        sev = rule.severity or t.default_severity
