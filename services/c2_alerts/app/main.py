@@ -13,7 +13,7 @@ from homeai_common.errors import error_envelope, install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
-from app.api import rules
+from app.api import alerts, rules
 from app.gateways.types import DependencyUnavailableError
 from app.settings import SERVICE_NAME, Settings, get_settings
 
@@ -62,6 +62,7 @@ def create_app(
         swagger_ui_parameters={"persistAuthorization": True},
         lifespan=lifespan,
     )
+    app.state.settings = settings
     install_error_handlers(app)
     app.add_exception_handler(DependencyUnavailableError, _dependency_unavailable)
     app.add_middleware(RequestIdMiddleware)
@@ -73,5 +74,6 @@ def create_app(
             version=settings.git_sha,
         )
     )
+    app.include_router(alerts.router)
     app.include_router(rules.router)
     return app

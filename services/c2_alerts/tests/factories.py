@@ -76,9 +76,14 @@ def make_alert(
     severity: str | None = None,
     triggered_at: datetime | None = None,
     detection_id: str | None = None,
+    room_id: str | None = None,
+    threshold: float | None = None,
 ) -> Alert:
     alert = build_alert(rule, house_id=house_id, severity=severity, detection_id=detection_id)
     alert.status = status
+    alert.threshold = threshold
+    if room_id is not None:
+        alert.room_id = room_id
     if triggered_at is not None:
         alert.triggered_at = triggered_at
     session.add(alert)

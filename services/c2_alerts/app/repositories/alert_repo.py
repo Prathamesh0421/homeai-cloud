@@ -6,7 +6,7 @@ from collections.abc import Sequence
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import String, cast, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -77,6 +77,44 @@ class AlertRepository:
         total = self.session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         page = stmt.order_by(Alert.triggered_at.desc(), Alert.alert_id).offset(offset).limit(limit)
         return list(self.session.scalars(page).unique()), total
+
+    def stats(
+        self,
+        scope: Scope,
+        group_by: str,
+        *,
+        from_: datetime,
+        to: datetime,
+        house_id: str | None = None,
+        statuses: Sequence[str] | None = None,
+    ) -> list[tuple[str, int]]:
+        """``[(key, count)]`` of alerts triggered in ``[from_, to)``.
+
+        Keys: severity value, alert type code, house_id, or UTC day ``YYYY-MM-DD``.
+        """
+        keys: dict[str, Any] = {
+            "severity": Alert.severity,
+            "alert_type": AlertType.code,
+            "house": cast(Alert.house_id, String),
+            "day": func.to_char(func.timezone("UTC", Alert.triggered_at), "YYYY-MM-DD"),
+        }
+        if group_by not in keys:
+            raise ValueError(f"unknown group_by {group_by!r}")
+        key = keys[group_by].label("key")
+        stmt = (
+            select(key, func.count().label("count"))
+            .select_from(Alert)
+            .where(Alert.triggered_at >= from_, Alert.triggered_at < to)
+        )
+        if group_by == "alert_type":
+            stmt = stmt.join(AlertType, AlertType.alert_type_id == Alert.alert_type_id)
+        stmt = scope.apply(stmt, Alert)
+        if house_id is not None:
+            stmt = stmt.where(Alert.house_id == house_id)
+        if statuses:
+            stmt = stmt.where(Alert.status.in_(statuses))
+        rows = self.session.execute(stmt.group_by(key)).all()
+        return [(str(k), int(c)) for k, c in rows]
 
     def transition(
         self, alert_id: str, from_status: str, to_status: str, at: datetime | None = None

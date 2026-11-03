@@ -68,6 +68,7 @@ CREATE TABLE c2.alerts (
   alert_type_id   SMALLINT NOT NULL REFERENCES c2.alert_types(alert_type_id),
   rule_id         UUID NOT NULL REFERENCES c2.alert_rules(rule_id),
   detection_id    UUID NOT NULL UNIQUE,                -- idempotency key
+  threshold       NUMERIC(3,2),                        -- [D3, 0003] effective threshold at raise time
   media_id        UUID NOT NULL,
   top_label       VARCHAR(40) NOT NULL,
   top_confidence  NUMERIC(4,3) NOT NULL,
@@ -119,7 +120,7 @@ Access: **O** = house_owner (own houses), **CS** = cloud_staff, **svc** = servic
 | Method & path | Access | Request | Response / errors |
 |---|---|---|---|
 | `GET /alerts` | O, CS, svc `alerts:read` | `status` (csv), `severity`, `alert_type_code`, `house_id`, `tenant_id` (CS), `from`, `to`, `page`, `page_size` | list `{alert_id, house_id, house_name, room_id, room_name, alert_type_code, alert_type_name, severity, status, top_label, top_confidence, triggered_at}` |
-| `GET /alerts/{id}` | O, CS | — | alert + `evidence {detection_id, media_id, labels[], model}` + `timeline[]` + `notifications[]` (+ `view_link` per email notification **only if `DEMO_MODE=1`**); 404/403 |
+| `GET /alerts/{id}` | O, CS | — | alert + `allowed_actions[]` **[D3]** + `evidence {detection_id, media_id, labels[], model, threshold, detection_available}` **[D3]** + `timeline[]` + `notifications[]` (+ `view_link` per email notification **only if `DEMO_MODE=1`**); 404/403 |
 | `GET /alerts/stats` | O, CS, svc `alerts:read` | `group_by` (`alert_type`/`severity`/`house`/`day`), `from`, `to` (required, ≤ 366 days), `house_id`, `status`, `tenant_id` | `[{key, count}]` |
 | `POST /alerts/{id}/acknowledge` | O, CS | `{note?}` ≤ 500 | 200 alert; 409 `invalid_state` |
 | `POST /alerts/{id}/resolve` | O, CS | `{note?}` | 200; 409 |

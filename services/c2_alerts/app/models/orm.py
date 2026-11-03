@@ -132,6 +132,8 @@ class Alert(Base):
     media_id: Mapped[str] = mapped_column(UUIDStr)
     top_label: Mapped[str] = mapped_column(String(40))
     top_confidence: Mapped[float] = mapped_column(Numeric(4, 3, asdecimal=False))
+    # Effective threshold at raise time (rule min_confidence + house sensitivity); 0003.
+    threshold: Mapped[float | None] = mapped_column(Numeric(3, 2, asdecimal=False))
     severity: Mapped[str] = mapped_column(String(8))
     status: Mapped[str] = mapped_column(String(16), server_default=text("'open'"), default="open")
     triggered_at: Mapped[datetime] = mapped_column(TZ, server_default=func.now())

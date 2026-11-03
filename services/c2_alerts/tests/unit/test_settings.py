@@ -58,3 +58,19 @@ def test_unknown_notifier_rejected(monkeypatch):
 def test_default_checks_include_mongo_only_when_configured(env):
     assert set(default_checks(Settings())) == {"db", "mongo"}
     assert set(default_checks(Settings(mongo_reader_url=None))) == {"db"}
+
+
+def test_detection_reader_wiring():
+    from app.api.deps import get_app_settings, get_detection_reader
+    from app.gateways.detection_gateway import MongoDetectionGateway
+
+    class _Req:
+        class app:
+            class state:
+                settings = Settings(mongo_reader_url="mongodb://localhost:1/homeai")
+
+    settings = get_app_settings(_Req())
+    reader = get_detection_reader(settings)
+    assert isinstance(reader, MongoDetectionGateway)
+    assert reader.collection.full_name == "homeai.ai_detections"
+    assert get_detection_reader(Settings(mongo_reader_url=None)) is None

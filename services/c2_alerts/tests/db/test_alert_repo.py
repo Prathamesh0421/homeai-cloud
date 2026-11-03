@@ -191,3 +191,10 @@ def test_other_integrity_errors_are_not_reported_as_duplicates(session, rule):
     alert.rule_id = uid()  # foreign key violation, not the detection_id unique key
     with pytest.raises(IntegrityError, match="rule_id"):
         AlertRepository(session).add(alert)
+
+
+def test_stats_rejects_unknown_grouping(session):
+    with pytest.raises(ValueError, match="group_by"):
+        AlertRepository(session).stats(
+            Scope.everything(), "room", from_=T0, to=T0 + timedelta(days=1)
+        )
