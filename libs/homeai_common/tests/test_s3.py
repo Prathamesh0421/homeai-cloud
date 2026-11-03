@@ -18,6 +18,9 @@ def fake_aws(monkeypatch, tmp_path):
     monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "none"))
     monkeypatch.delenv("AWS_SESSION_TOKEN", raising=False)
     monkeypatch.delenv("AWS_PROFILE", raising=False)
+    # boto3 reads these itself when no endpoint is passed (CI sets AWS_ENDPOINT_URL).
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.delenv("AWS_ENDPOINT_URL_S3", raising=False)
 
 
 def test_client_uses_endpoint_path_style_and_sigv4():
