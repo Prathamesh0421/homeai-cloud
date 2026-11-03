@@ -11,32 +11,46 @@ from sqlalchemy import Connection, engine_from_config, pool, text
 
 config = context.config
 
-if config.config_file_name is not None:
+# Tests pass an open connection via config.attributes["connection"]; then the URL and the
+# logging config are left alone.
+_given_connection: Connection | None = config.attributes.get("connection")
+
+if config.config_file_name is not None and _given_connection is None:
     fileConfig(config.config_file_name)
 
 # DATABASE_URL_C2 / C2_DATABASE_URL win over alembic.ini.
 _url = Settings().database_url or config.get_main_option("sqlalchemy.url")
-config.set_main_option("sqlalchemy.url", _url)
+if _given_connection is None:
+    config.set_main_option("sqlalchemy.url", _url)
 
 target_metadata = Base.metadata
+
+
+# Indexes created by raw SQL in migrations and intentionally absent from the ORM
+# (expression indexes compare unreliably across Alembic versions).
+MIGRATION_ONLY_INDEXES = {"ux_rules_dup"}
 
 
 def _include_name(name: str | None, type_: str, parent_names: dict) -> bool:
     # Only compare our own schema; c1/c3/c4 tables in the same database are not ours.
     if type_ == "schema":
         return name == SCHEMA
-    return True
+    return not (type_ == "index" and name in MIGRATION_ONLY_INDEXES)
 
 
 def _ensure_schema(connection: Connection) -> None:
     # Alembic writes c2.alembic_version before the first revision runs, so the schema must
     # exist first. infra/db/init.sql normally creates it; this covers fresh databases. Check
     # before creating so c2_app does not need CREATE on the database when it already exists.
+    # The SELECT autobegins a transaction; if we started it we must end it, or Alembic would
+    # run the migrations inside it and they would be rolled back when the connection closes.
+    started_here = not connection.in_transaction()
     exists = connection.execute(
         text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :s"), {"s": SCHEMA}
     ).first()
     if not exists:
         connection.execute(text(f"CREATE SCHEMA {SCHEMA}"))
+    if started_here:
         connection.commit()
 
 
@@ -54,23 +68,30 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+def _run(connection: Connection) -> None:
+    _ensure_schema(connection)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        version_table_schema=SCHEMA,
+        include_schemas=True,
+        include_name=_include_name,
+    )
+    with context.begin_transaction():
+        context.run_migrations()
+
+
 def run_migrations_online() -> None:
+    if _given_connection is not None:
+        _run(_given_connection)
+        return
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        _ensure_schema(connection)
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            version_table_schema=SCHEMA,
-            include_schemas=True,
-            include_name=_include_name,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+        _run(connection)
 
 
 if context.is_offline_mode():

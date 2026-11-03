@@ -185,6 +185,10 @@ jobs:
           done
           alembic upgrade head
           alembic downgrade base
+          # A downgrade that silently rolls back (e.g. an uncommitted transaction in env.py)
+          # still exits 0, so check that no revision is left applied.
+          left=$(alembic current 2>/dev/null)
+          if [ -n "$left" ]; then echo "::error::downgrade base left revision: $left"; exit 1; fi
           alembic upgrade head
           alembic check
 

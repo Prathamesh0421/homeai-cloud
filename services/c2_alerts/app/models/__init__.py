@@ -13,3 +13,7 @@ SCHEMA = "c2"
 
 class Base(DeclarativeBase):
     metadata = MetaData(schema=SCHEMA)
+
+
+# Register the tables on Base.metadata (imported last: orm.py imports Base from here).
+from app.models import orm  # noqa: E402, F401
