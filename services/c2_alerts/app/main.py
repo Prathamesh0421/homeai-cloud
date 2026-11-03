@@ -5,13 +5,16 @@ from __future__ import annotations
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from homeai_common import db, mongo
 from homeai_common.auth import configure_jwks
-from homeai_common.errors import install_error_handlers
+from homeai_common.errors import error_envelope, install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
+from app.api import rules
+from app.gateways.types import DependencyUnavailableError
 from app.settings import SERVICE_NAME, Settings, get_settings
 
 
@@ -22,6 +25,16 @@ def default_checks(settings: Settings) -> dict[str, HealthCheck]:
         url = settings.mongo_reader_url
         checks["mongo"] = lambda: mongo.check_mongo(mongo.get_mongo_db(url))
     return checks
+
+
+async def _dependency_unavailable(_: Request, exc: DependencyUnavailableError) -> JSONResponse:
+    # 503 so callers (C3's handoff, the SPA) retry; details name the source that is down.
+    return JSONResponse(
+        status_code=503,
+        content=error_envelope(
+            "dependency_unavailable", f"{exc.source} is unavailable", {"source": exc.source}
+        ),
+    )
 
 
 def create_app(
@@ -50,6 +63,7 @@ def create_app(
         lifespan=lifespan,
     )
     install_error_handlers(app)
+    app.add_exception_handler(DependencyUnavailableError, _dependency_unavailable)
     app.add_middleware(RequestIdMiddleware)
 
     app.include_router(
@@ -59,4 +73,5 @@ def create_app(
             version=settings.git_sha,
         )
     )
+    app.include_router(rules.router)
     return app

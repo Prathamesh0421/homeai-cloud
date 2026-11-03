@@ -50,7 +50,7 @@ def test_add_duplicate_enabled_rule_raises_and_session_stays_usable(session):
         repo.add(_new_rule(session, "fall", house_id=HOUSE_A1, room_id=ROOM_A1_BATH))
     # The savepoint kept the outer transaction alive.
     assert session.execute(text("SELECT 1")).scalar() == 1
-    assert len(repo.enabled_for(TENANT_A, HOUSE_A1)) == 1
+    assert len(repo.enabled_for(TENANT_A, HOUSE_A1, ROOM_A1_BATH)) == 1
 
 
 def test_duplicate_tenant_default_detected_with_null_house_and_room(session):
@@ -204,30 +204,62 @@ def test_enabled_for_orders_by_severity_then_room_then_age(session):
         session, "wellness_cough", house_id=HOUSE_A1, severity="critical", created_at=T0
     )  # override beats type default (low)
 
-    ids = [r.rule_id for r in repo.enabled_for(TENANT_A, HOUSE_A1)]
+    # Detection in the Kitchen: the Bathroom fall rule does not apply (kept for room_mismatch).
+    ids = [r.rule_id for r in repo.enabled_for(TENANT_A, HOUSE_A1, ROOM_A1_KITCHEN)]
     assert ids == [
         cough_upgraded.rule_id,  # critical
         intrusion_old.rule_id,  # high, room-specific, oldest
-        fall_bath.rule_id,  # high, room-specific
+        fall_bath.rule_id,  # high, room-specific (other room)
         fall_any.rule_id,  # high, any room
         pet.rule_id,  # low
     ]
 
 
-def test_enabled_for_uses_tenant_default_only_when_house_has_no_rule_for_type(session):
+def _ids(rules) -> set[str]:
+    return {r.rule_id for r in rules}
+
+
+def test_room_rule_replaces_the_default_only_in_its_room(session):
+    """Decision 2026-11-03: most specific applicable rule per type wins (room > house > tenant)."""
     repo = RuleRepository(session)
     smoke_default = make_rule(session, "smoke")
     fall_default = make_rule(session, "fall")
-    fall_house = make_rule(session, "fall", house_id=HOUSE_A1, room_id=ROOM_A1_BATH)
+    fall_bath = make_rule(
+        session, "fall", house_id=HOUSE_A1, room_id=ROOM_A1_BATH, min_confidence=0.7
+    )
 
-    ids = {r.rule_id for r in repo.enabled_for(TENANT_A, HOUSE_A1)}
-    # As specified: a house rule for a type (even room-only) replaces that type's default.
-    assert ids == {smoke_default.rule_id, fall_house.rule_id}
-    # Another house of the tenant still gets both defaults.
-    assert {r.rule_id for r in repo.enabled_for(TENANT_A, HOUSE_A2)} == {
+    # In the Bathroom the room rule hides the default (so its stricter threshold really applies).
+    assert _ids(repo.enabled_for(TENANT_A, HOUSE_A1, ROOM_A1_BATH)) == {
+        smoke_default.rule_id,
+        fall_bath.rule_id,
+    }
+    # In the Kitchen the default still applies; the Bathroom rule stays for room_mismatch.
+    assert _ids(repo.enabled_for(TENANT_A, HOUSE_A1, ROOM_A1_KITCHEN)) == {
+        smoke_default.rule_id,
+        fall_default.rule_id,
+        fall_bath.rule_id,
+    }
+    # Unknown room: room rules cannot apply, so the default does.
+    assert fall_default.rule_id in _ids(repo.enabled_for(TENANT_A, HOUSE_A1, None))
+    # Another house of the tenant only sees the defaults.
+    assert _ids(repo.enabled_for(TENANT_A, HOUSE_A2, None)) == {
         smoke_default.rule_id,
         fall_default.rule_id,
     }
+
+
+def test_whole_house_rule_replaces_default_everywhere_and_room_rule_beats_it(session):
+    repo = RuleRepository(session)
+    fall_default = make_rule(session, "fall")
+    fall_house = make_rule(session, "fall", house_id=HOUSE_A1)
+    fall_bath = make_rule(session, "fall", house_id=HOUSE_A1, room_id=ROOM_A1_BATH)
+
+    assert _ids(repo.enabled_for(TENANT_A, HOUSE_A1, ROOM_A1_KITCHEN)) == {
+        fall_house.rule_id,
+        fall_bath.rule_id,
+    }
+    assert _ids(repo.enabled_for(TENANT_A, HOUSE_A1, ROOM_A1_BATH)) == {fall_bath.rule_id}
+    assert fall_default.rule_id not in _ids(repo.enabled_for(TENANT_A, HOUSE_A1, None))
 
 
 def test_enabled_for_ignores_disabled_deleted_and_other_tenants(session):
@@ -238,9 +270,9 @@ def test_enabled_for_ignores_disabled_deleted_and_other_tenants(session):
     make_rule(session, "pet", tenant_id=TENANT_B)
     default_fall = make_rule(session, "fall")
 
-    # A disabled house rule does not hide the tenant default.
-    assert [r.rule_id for r in repo.enabled_for(TENANT_A, HOUSE_A1)] == [default_fall.rule_id]
-    assert repo.enabled_for(TENANT_B, HOUSE_A1)[0].alert_type.code == "pet"
+    # Decision 2026-11-03: a disabled house rule does not hide the tenant default.
+    assert [r.rule_id for r in repo.enabled_for(TENANT_A, HOUSE_A1, None)] == [default_fall.rule_id]
+    assert repo.enabled_for(TENANT_B, HOUSE_A1, None)[0].alert_type.code == "pet"
 
 
 # --- defaults -------------------------------------------------------------------------------

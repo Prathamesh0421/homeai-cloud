@@ -10,3 +10,7 @@ Additions to the D2 design made by this plan (all marked **[D3 addition]** in th
 - C3: model registry (`/models*`, `model_evaluations` table, model status), `POST /inference/test`, `GET /models/deployment` + `worker_heartbeats`, `GET /detections/stats`, `handoff_status` field; max worker attempts fixed at 3.
 - C4: `GET /auth/revoked`, `POST /dashboard/rollup`, `users_public` view, service clients table.
 - Platform: all IDs UUID strings; RS256 + JWKS; quiet hours suppress only medium/low; sensitivity ±0.10.
+
+## Changes
+- 2026-11-03 — C2 — Added `GET /alert-rules/{id}` (cloud_staff) so the `Location` header of `POST /alert-rules` resolves; rule responses carry `ETag: "<version>"` for `If-Match`. `POST /alert-rules/defaults` takes `{tenant_id}` in the body (as in the API table). — agreed by Prathamesh (C2 owner)
+- 2026-11-03 — C2 — Rule selection (C2 plan §4.1 step 4): per alert type the most specific applicable rule wins for the detection's room (room rule > whole-house rule > tenant default). A room-only house rule replaces the default only in its room; a disabled house rule does not hide the default. — agreed by Prathamesh (C2 owner)

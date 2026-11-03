@@ -13,18 +13,22 @@ import pytest
 from app.constants import SERVICE_CODES
 from app.gateways.c1_house_gateway import C1HouseGateway
 from app.gateways.c4_settings_gateway import C4SettingsGateway
-from app.gateways.types import Contact, DependencyUnavailableError, House, HouseSettings, Room
+from app.gateways.types import Contact, DependencyUnavailableError, HouseSettings
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session
 
 from tests.factories import (
+    BATH,
     HOUSE_A1,
     HOUSE_A2,
     HOUSE_B1,
+    KITCHEN,
+    MAPLE,
+    OAK,
+    PINE,
     ROOM_A1_BATH,
     ROOM_A1_KITCHEN,
     TENANT_A,
-    TENANT_B,
     uid,
 )
 from tests.fakes import FakeHouseReader, FakeSettingsReader
@@ -57,11 +61,6 @@ CREATE TABLE c1.rooms (
 """
 
 HOUSE_DELETED = "22222222-0000-0000-0000-0000000000dd"
-MAPLE = House(HOUSE_A1, TENANT_A, "Maple St", "America/Los_Angeles")
-OAK = House(HOUSE_A2, TENANT_A, "Oak Ave", "America/Los_Angeles")
-PINE = House(HOUSE_B1, TENANT_B, "Pine Rd", "America/New_York")
-BATH = Room(ROOM_A1_BATH, HOUSE_A1, "Bathroom")
-KITCHEN = Room(ROOM_A1_KITCHEN, HOUSE_A1, "Kitchen")
 MAPLE_SETTINGS = HouseSettings(
     house_id=HOUSE_A1,
     tenant_id=TENANT_A,

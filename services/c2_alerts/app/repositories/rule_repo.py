@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy import case, exists, func, select, update
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, aliased
+from sqlalchemy.orm import Session
 
 from app.constants import SEVERITY_RANK
 from app.models.orm import Alert, AlertRule, AlertType
@@ -99,6 +99,10 @@ class RuleRepository:
         rows = [(rule, int(fp)) for rule, fp in self.session.execute(stmt).unique()]
         return rows, total
 
+    def false_positive_count_30d(self, rule_id: str) -> int:
+        stmt = select(_false_positive_count_30d()).where(AlertRule.rule_id == rule_id)
+        return int(self.session.scalar(stmt) or 0)
+
     def update(
         self, rule_id: str, expected_version: int, scope: Scope, **fields: Any
     ) -> AlertRule | None:
@@ -142,28 +146,24 @@ class RuleRepository:
             stmt = stmt.where(AlertRule.tenant_id == scope.tenant_id)
         return self.session.execute(stmt).rowcount == 1
 
-    def enabled_for(self, tenant_id: str, house_id: str) -> list[AlertRule]:
-        """Rules the engine evaluates for a house, strongest first.
+    def enabled_for(self, tenant_id: str, house_id: str, room_id: str | None) -> list[AlertRule]:
+        """Rules the engine evaluates for a detection in ``room_id`` of a house, strongest first.
 
-        House rules, plus tenant defaults (``house_id IS NULL``) for alert types that have no
-        enabled house rule. Order: effective severity desc, room-specific before room-less,
-        oldest first, then rule_id for a stable tiebreak.
+        Per alert type the most specific *applicable* rules win and hide the less specific ones:
+        a rule for this room > a whole-house rule > the tenant default. Rules for other rooms
+        never apply and never hide anything; they stay in the list so the engine can report
+        ``room_mismatch``. Disabled or deleted rules hide nothing.
+
+        Order: effective severity desc, room-specific before room-less, oldest first, rule_id.
         """
-        house_rule = aliased(AlertRule)
-        active = (AlertRule.is_enabled.is_(True), AlertRule.deleted_at.is_(None))
-        has_house_rule = exists().where(
-            house_rule.tenant_id == tenant_id,
-            house_rule.house_id == house_id,
-            house_rule.alert_type_id == AlertRule.alert_type_id,
-            house_rule.is_enabled.is_(True),
-            house_rule.deleted_at.is_(None),
-        )
         stmt = (
             select(AlertRule)
             .join(AlertType, AlertType.alert_type_id == AlertRule.alert_type_id)
-            .where(AlertRule.tenant_id == tenant_id, *active)
             .where(
-                (AlertRule.house_id == house_id) | (AlertRule.house_id.is_(None) & ~has_house_rule)
+                AlertRule.tenant_id == tenant_id,
+                AlertRule.is_enabled.is_(True),
+                AlertRule.deleted_at.is_(None),
+                (AlertRule.house_id == house_id) | AlertRule.house_id.is_(None),
             )
             .order_by(
                 _severity_rank(AlertRule, AlertType).desc(),
@@ -172,7 +172,26 @@ class RuleRepository:
                 AlertRule.rule_id,
             )
         )
-        return list(self.session.scalars(stmt).unique())
+        rules = list(self.session.scalars(stmt).unique())
+
+        def specificity(rule: AlertRule) -> int | None:
+            """2 = this room, 1 = whole house, 0 = tenant default, None = another room."""
+            if rule.house_id is None:
+                return 0
+            if rule.room_id is None:
+                return 1
+            return 2 if rule.room_id == room_id else None
+
+        best: dict[int, int] = {}
+        for rule in rules:
+            level = specificity(rule)
+            if level is not None:
+                best[rule.alert_type_id] = max(best.get(rule.alert_type_id, 0), level)
+        return [
+            rule
+            for rule in rules
+            if (level := specificity(rule)) is None or level == best[rule.alert_type_id]
+        ]
 
     def types_missing_default(self, tenant_id: str) -> list[AlertType]:
         """Alert types with no enabled tenant-wide default rule (for POST /alert-rules/defaults)."""

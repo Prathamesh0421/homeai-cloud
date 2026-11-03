@@ -109,7 +109,7 @@ CREATE TABLE c2.notifications (
 CREATE INDEX ix_notif_retry ON c2.notifications (status, next_attempt_at) WHERE status = 'failed';
 ```
 `0002_seed_alert_types` inserts the 7 alert types from `02_CONTRACTS.md` §3. Tenant default rules (one
-per type, `house_id NULL`) are created by `scripts/seed.py` and by `POST /alert-rules/defaults?tenant_id=`
+per type, `house_id NULL`) are created by `scripts/seed.py` and by `POST /alert-rules/defaults` (body `{tenant_id}`)
 **[D3 addition, cloud_staff]** for new tenants.
 
 ---
@@ -128,7 +128,8 @@ Access: **O** = house_owner (own houses), **CS** = cloud_staff, **svc** = servic
 | `GET /alert-types` | O, CS | — | list incl. defaults and service code |
 | `GET /alert-rules` | CS | `tenant_id`, `house_id`, `alert_type_code`, `is_enabled`, page | list incl. `false_positive_count_30d` |
 | `POST /alert-rules` | CS | `{tenant_id?, house_id?, alert_type_code, trigger_labels[], min_confidence?, room_id?, severity?, is_enabled}` | 201 + `Location`; 422; 409 `duplicate_rule` |
-| `PUT /alert-rules/{id}` | CS | editable fields; header `If-Match: <version>` | 200; 412 `version_mismatch` |
+| `GET /alert-rules/{id}` **[D3]** | CS | — | rule + `ETag: "<version>"`; 404 (target of `POST`'s `Location`) |
+| `PUT /alert-rules/{id}` | CS | editable fields; header `If-Match: <version>` | 200 + new `ETag`; 412 `version_mismatch` `{current_version}`; 409 `duplicate_rule` when re-enabling into a duplicate |
 | `DELETE /alert-rules/{id}` | CS | — | soft delete, 204 |
 | `POST /alert-rules/defaults` **[D3]** | CS | `{tenant_id}` | creates missing tenant default rules; 200 `{created: n}` |
 | `POST /alert-rules/subscriptions/sync` **[D3]** | CS | `{house_id?}` | runs subscription sync now; `{topics, subscribed, pending, removed}` |
@@ -145,9 +146,11 @@ Rule validation: `alert_type_code` exists; `trigger_labels` ⊆ the 7 home label
 1  existing = alerts.find_by_detection(req.detection_id) -> return 200 duplicate
 2  d = detection_gateway.get(req.detection_id)  (Mongo, read-only) ; if missing or d.house_id != req.house_id -> 422
 3  house = c1_reader.house(req.house_id) (timezone, tenant) ; settings = c4_reader.settings(house_id) or DEFAULTS
-4  rules = rules_repo.enabled_for(tenant, house):
-       house rules + tenant defaults whose alert type has NO house rule; order by severity rank desc,
-       room-specific first, created_at asc
+4  rules = rules_repo.enabled_for(tenant, house, d.room_id):
+       per alert type the most specific applicable enabled rules win: rule for this room >
+       whole-house rule > tenant default (rules for other rooms stay, for room_mismatch, but hide
+       nothing; disabled rules hide nothing); order by severity rank desc, room-specific first,
+       created_at asc
 5  best_miss = "no_rule_match"
 6  for rule in rules:
        t = rule.alert_type
@@ -291,7 +294,7 @@ deadline for all of them.
 
 | Done | Tag | Stand-in | Where | Trigger | Action |
 |---|---|---|---|---|---|
-| [ ] | `STANDIN(C1-02)` | c1/c4 tables built from copied DDL in tests | `tests/db/test_sql_gateways.py` | C1 migration 0001 (Ekant) | Build them by running the real C1 + C4 migrations in the test DB; delete the DDL |
+| [ ] | `STANDIN(C1-02)` | c1/c4 tables built from copied DDL in tests | `tests/db/test_sql_gateways.py` | C1 migration 0001 (Ekant) | Build them by running the real C1 + C4 migrations in the test DB; delete the DDL. Also update `test_real_reader_wiring_reports_c1_not_deployed` in `tests/db/test_rules_api.py` (503 `c1` → 422 unknown house) |
 | [ ] | `STANDIN(contracts)` | Local `Detection` model for `ai_detections` | `app/gateways/types.py` | `homeai_common/contracts.py` (all owners) | Import `DetectionDoc`; delete the local classes |
 | [ ] | `STANDIN(P0-5)` | Tests connect as the Postgres superuser | `tests/db/conftest.py` | `infra/db/init.sql` roles + grants (Renuka) | Add tests: `c2_reader` reads only the §4.5 tables and cannot write |
 | [ ] | `STANDIN(P0-5)` | CI creates schemas when `init.sql` is missing | `.github/workflows/ci.yml` | `infra/db/init.sql` (Renuka) | CI switches automatically; delete the fallback branch |

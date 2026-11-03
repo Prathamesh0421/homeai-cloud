@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
+from app.gateways.types import House, Room
 from app.models.orm import Alert, AlertRule, AlertType
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -17,6 +18,13 @@ HOUSE_B1 = "22222222-0000-0000-0000-0000000000b1"
 ROOM_A1_BATH = "33333333-0000-0000-0000-0000000000a1"
 ROOM_A1_KITCHEN = "33333333-0000-0000-0000-0000000000a2"
 STAFF_USER = "44444444-0000-0000-0000-000000000001"
+OWNER_USER = "44444444-0000-0000-0000-000000000002"
+
+MAPLE = House(HOUSE_A1, TENANT_A, "Maple St", "America/Los_Angeles")
+OAK = House(HOUSE_A2, TENANT_A, "Oak Ave", "America/Los_Angeles")
+PINE = House(HOUSE_B1, TENANT_B, "Pine Rd", "America/New_York")
+BATH = Room(ROOM_A1_BATH, HOUSE_A1, "Bathroom")
+KITCHEN = Room(ROOM_A1_KITCHEN, HOUSE_A1, "Kitchen")
 
 
 def uid() -> str:
