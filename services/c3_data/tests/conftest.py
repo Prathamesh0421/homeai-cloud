@@ -55,3 +55,35 @@ def make_client(settings) -> Iterator[Callable[..., TestClient]]:
 @pytest.fixture
 def client(make_client) -> TestClient:
     return make_client()
+
+
+@pytest.fixture
+def auth_header(monkeypatch):
+    """``auth_header(role=..., ...)`` -> Authorization header verified by a static test JWKS.
+
+    Call it after the TestClient has started (app startup configures the real JWKS URL).
+    """
+    from homeai_common import auth
+    from homeai_common.auth import JwksCache
+    from homeai_common.testing import make_test_keys, mint_service_token, mint_user_token
+
+    private, _public, entry = make_test_keys(kid="test-key")
+
+    class _StaticJwks(JwksCache):
+        def __init__(self):
+            super().__init__(jwks_url="static")
+            self._keys = {entry["kid"]: entry}
+            self._fetched_at = 1e12
+
+        def _refresh(self) -> None:  # never hits the network
+            pass
+
+    def _header(*, service_scopes: list[str] | None = None, **claims) -> dict[str, str]:
+        monkeypatch.setattr(auth, "_default_cache", _StaticJwks())
+        if service_scopes is not None:
+            token = mint_service_token(private, kid="test-key", scopes=service_scopes)
+        else:
+            token = mint_user_token(private, kid="test-key", **claims)
+        return {"Authorization": f"Bearer {token}"}
+
+    return _header
