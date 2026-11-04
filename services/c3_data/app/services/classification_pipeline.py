@@ -11,7 +11,10 @@ activity rollup, C2 handoff) is wired up in Phase 5 (worker) and Phase 7 (handof
 from __future__ import annotations
 
 import time
+import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import numpy as np
 
@@ -82,3 +85,107 @@ def classify_bytes(
         duration_s=duration_seconds(waveform),
         latency_ms=latency_ms,
     )
+
+
+class DetectionExistsError(Exception):
+    """A detection already exists for this media_id and force was not set."""
+
+
+def build_detection_document(ev: dict, model: dict, result: ClassificationResult) -> dict:
+    """Assemble an ``ai_detections`` document (contract §4.2) from the event and result."""
+    return {
+        "_id": str(uuid.uuid4()),
+        "media_id": ev["_id"],
+        "tenant_id": ev["tenant_id"],
+        "house_id": ev["house_id"],
+        "room_id": ev.get("room_id"),
+        "model": {
+            "model_id": model["model_id"],
+            "name": model["name"],
+            "version": model["version"],
+        },
+        "labels": [
+            {
+                "label": label.label,
+                "confidence": label.confidence,
+                "source_class": label.source_class,
+                "start_s": label.start_s,
+                "end_s": label.end_s,
+            }
+            for label in result.labels
+        ],
+        "top_label": result.top_label,
+        "top_confidence": result.top_confidence,
+        "detected_at": datetime.now(UTC),
+    }
+
+
+class ClassificationPipeline:
+    """Full persisting pipeline (docs §4.2 steps 1-8) used by the worker and classify endpoint.
+
+    Dependencies are injected so the pipeline is testable without TF/S3/Mongo:
+      s3_get(key) -> bytes, detection_repo, media_event_repo, model cache.
+    ``on_detection`` is the C2 handoff hook (Phase 7); it returns the handoff_status string
+    ("done"/"pending"); default logs and returns "done" (HANDOFF_MODE=log). ``on_rollup`` is the
+    activity rollup hook (Phase 8); default is a no-op.
+    """
+
+    def __init__(
+        self,
+        *,
+        s3_get: Callable[[str], bytes],
+        detection_repo,
+        media_event_repo,
+        on_detection: Callable[[dict], str] | None = None,
+        on_rollup: Callable[[dict], None] | None = None,
+    ):
+        self._s3_get = s3_get
+        self._detections = detection_repo
+        self._events = media_event_repo
+        self._on_detection = on_detection or self._log_handoff
+        self._on_rollup = on_rollup or (lambda _doc: None)
+
+    @staticmethod
+    def _log_handoff(detection: dict) -> str:
+        import logging
+
+        logging.getLogger("c3.handoff").info(
+            "handoff (log mode)",
+            extra={"detection_id": detection["_id"], "top_label": detection["top_label"]},
+        )
+        return "done"
+
+    def classify(
+        self,
+        ev: dict,
+        model: dict,
+        runner: YamnetRunner,
+        mapper: LabelMapper,
+        label_map: dict,
+        *,
+        force: bool = False,
+    ) -> dict:
+        """Run steps 1-8 for a stored clip event; return the persisted detection document."""
+        media_id = ev["_id"]
+
+        # 1. Dedupe unless force.
+        if not force and self._detections.exists_for_media(media_id):
+            raise DetectionExistsError(media_id)
+
+        # 2-5. Download + inference core.
+        raw = self._s3_get(ev["s3"]["key"])
+        result = classify_bytes(raw, runner, mapper, label_map)
+
+        # 6. Build + upsert detection; mark the clip analyzed.
+        detection = build_detection_document(ev, model, result)
+        self._detections.upsert_by_media(detection)
+
+        # 7. Activity rollup (Phase 8 hook).
+        self._on_rollup(detection)
+
+        # 8. Handoff to C2 (Phase 7 hook); record the resulting handoff status.
+        handoff_status = self._on_detection(detection)
+        self._events.mark_analyzed(media_id, detection["_id"], handoff_status)
+
+        detection["_latency_ms"] = result.latency_ms
+        return detection
