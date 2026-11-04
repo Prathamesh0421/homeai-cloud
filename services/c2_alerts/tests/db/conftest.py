@@ -18,8 +18,8 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 SERVICE_DIR = Path(__file__).resolve().parents[2]
-# STANDIN(P0-5): tests connect as the Postgres superuser. Once infra/db/init.sql creates the
-# c2_app / c2_reader roles, add tests that c2_reader can read only its contract §4.5 tables.
+# Tests connect as the Postgres superuser (to drop and rebuild schema c2); the role grants
+# from infra/db/init.sql are checked with SET ROLE in test_reader_grants.py.
 # Read now, before any test's monkeypatch can remove it.
 DATABASE_URL = os.environ.get("DATABASE_URL_C2")
 

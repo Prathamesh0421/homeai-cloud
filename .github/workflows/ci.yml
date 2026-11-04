@@ -158,22 +158,15 @@ jobs:
           fi
           pip install "pytest>=8" "pytest-cov>=5"
 
-      - name: Prepare databases (schemas, extensions)
+      - name: Prepare databases (infra/db/init.sql)
         if: matrix.pkg.service
         run: |
-          # STANDIN(P0-5): delete the else-branch once infra/db/init.sql exists.
-          # Migrations expect their schema to exist already (infra/db/init.sql does this in the
-          # stack). Use init.sql when it exists; until then create the schemas directly.
+          # Same bootstrap as the stack: schemas, extensions, cX_app / cX_reader roles and
+          # grants. Roles are cluster-wide; the script is idempotent, so running it per
+          # database is safe. Tests check the reader grants with SET ROLE.
           psql -h localhost -U postgres -d postgres -c "CREATE DATABASE homeai_migrate"
           for db in homeai_test homeai_migrate; do
-            if [ -f infra/db/init.sql ]; then
-              psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d "$db" -f infra/db/init.sql
-            else
-              psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d "$db" -c \
-                "CREATE EXTENSION IF NOT EXISTS citext;
-                 CREATE SCHEMA IF NOT EXISTS c1; CREATE SCHEMA IF NOT EXISTS c2;
-                 CREATE SCHEMA IF NOT EXISTS c3; CREATE SCHEMA IF NOT EXISTS c4;"
-            fi
+            psql -v ON_ERROR_STOP=1 -h localhost -U postgres -d "$db" -f infra/db/init.sql
           done
 
       - name: Migrations round-trip (upgrade, downgrade, upgrade, drift check)
