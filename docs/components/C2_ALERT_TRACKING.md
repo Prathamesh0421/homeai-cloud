@@ -218,7 +218,11 @@ app/gateways/{detection_gateway.py (Mongo reader), c4_settings_gateway.py, c1_ho
 app/jobs/{notification_retry.py, subscription_sync.py}
 scripts/demo/c2_fake_detection.py      # DEMO_MODE: insert a detection doc + call evaluate with a c3 service token
 scripts/demo/c2_expired_link.py        # prints an already-expired alert-view link for the demo
+app/seed.py                            # tenant default rules for the seed tenants (python -m app.seed)
 ```
+Demo scripts use the shared seed IDs in `scripts/seed_ids.py` (`--house maple`, `--room Kitchen`).
+`c2_fake_detection.py` gets a `c3-worker` token from C4 (needs the seeded service clients) or takes
+`--token`; evaluate also needs C1's houses (until C1 lands it answers 503 `c1`).
 
 ---
 ## 6. UI (feature folder `c2-alerts`) — D2 wireframes
@@ -283,7 +287,7 @@ If-Match 412; alert-view 200/401/404; stats grouping. Coverage ≥ 80% on `servi
    note → Resolve. Show Resolve was disabled while open; show 409 via Swagger for resolve-on-open.
 5. **Quiet hours + severity** (C4 settings): set quiet hours to cover now → upload `cough.wav` (low) →
    `no_alert quiet_hours` in logs/response; upload `glass_break.wav` (high) → alert raised (bypass).
-6. Idempotency: re-send the same evaluate payload → `duplicate:true`. Expired link → 401 page.
+6. Idempotency: re-send the same evaluate payload → `duplicate:true` (`c2_fake_detection.py --resend <detection_id>`, printed by the first run). Expired link → 401 page (`python scripts/demo/c2_expired_link.py` prints one for the newest alert).
 7. Unit demo: `make test-c2` with coverage; Swagger `/api/v1/docs/c2`.
 ### 10.2 Scenario video (≈ 5 min) — "Night-time break-in at Maple St"
 Glass-break clip arrives at 23:10 during quiet hours → high-severity intrusion alert bypasses quiet hours →

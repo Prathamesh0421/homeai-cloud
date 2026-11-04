@@ -336,7 +336,7 @@ def test_stale_version_is_412_with_current_version(client, staff):
         ({}, '"1"', "body"),
         ({"min_confidence": None}, '"1"', "min_confidence"),
         ({"trigger_labels": None}, '"1"', "trigger_labels"),
-        ({"room_id": ROOM_A1_KITCHEN.replace("a2", "ff")}, '"1"', "room_id"),
+        ({"room_id": "33333333-0000-0000-0000-00000000a1ff"}, '"1"', "room_id"),
         ({"tenant_id": TENANT_B}, '"1"', "tenant_id"),
     ],
 )

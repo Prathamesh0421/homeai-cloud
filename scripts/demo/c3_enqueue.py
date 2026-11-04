@@ -26,10 +26,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "libs" / "homeai_common"))
 
+sys.path.insert(0, str(ROOT / "scripts"))
+
+import seed_ids  # noqa: E402
 from homeai_common.mongo import get_mongo_db  # noqa: E402
 from homeai_common.s3 import s3_client  # noqa: E402
 
-TENANT_ACME = "11111111-1111-1111-1111-111111111101"  # seed Acme Care tenant
+TENANT_ACME = seed_ids.TENANTS["acme"]  # seed Acme Care tenant (scripts/seed_ids.py)
 
 
 def s3_key(tenant_id: str, house_id: str, feed_id: str, media_id: str, ext: str) -> str:

@@ -183,6 +183,7 @@ On EC2 the `.env` is produced by `infra/aws/render_env.sh`, which reads secrets 
 
 ---
 ## 7. Seed data (`scripts/seed.py`, fixed UUIDs so docs and demos can reference them)
+The fixed IDs live in **`scripts/seed_ids.py`** (tenants `11111111-…`, houses `22222222-…`, rooms `33333333-…`, users `44444444-…`, Maple contacts `55555555-…`); `seed.py`, demo scripts and tests import them from there. C2's rules: `docker compose exec c2-alerts python -m app.seed`.
 | Kind | Seed |
 |---|---|
 | Tenants | `Acme Care` (`11111111-...-0001`), `Sunrise Living` (`...-0002`) for isolation tests |
