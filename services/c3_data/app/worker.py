@@ -131,23 +131,32 @@ class Worker:
 
         media_id = ev["_id"]
         try:
-            detection = self.pipeline.classify(
-                ev,
-                self._model,
-                self.cache.runner,
-                self.cache.mapper,
-                self._model["label_map"],
-            )
-            self.processed += 1
-            self._latency_total += int(detection.get("_latency_ms", 0))
-            logger.info(
-                "classified",
-                extra={"media_id": media_id, "top_label": detection["top_label"]},
-            )
-        except DetectionExistsError:
-            # Already analyzed by someone else; mark analyzed is not needed, just move on.
-            logger.info("already analyzed; skipping", extra={"media_id": media_id})
-        except Exception as exc:  # pipeline/S3/decode failures -> retry or fail
+            try:
+                detection = self.pipeline.classify(
+                    ev,
+                    self._model,
+                    self.cache.runner,
+                    self.cache.mapper,
+                    self._model["label_map"],
+                )
+            except DetectionExistsError:
+                # Stored by an earlier attempt that failed (or crashed) before the clip was
+                # marked analyzed. Finish that run: otherwise the clip stays "processing" and
+                # is reclaimed forever, and C2 may never get the detection.
+                detection = self.pipeline.finish_existing(ev)
+                if detection is None:  # removed in between: retry like any other failure
+                    raise
+                logger.info(
+                    "detection already stored; finished the clip", extra={"media_id": media_id}
+                )
+            else:
+                self.processed += 1
+                self._latency_total += int(detection.get("_latency_ms", 0))
+                logger.info(
+                    "classified",
+                    extra={"media_id": media_id, "top_label": detection["top_label"]},
+                )
+        except Exception as exc:  # pipeline/S3/decode/handoff failures -> retry or fail
             self.failed += 1
             new_status = self.events.mark_failure(media_id, int(ev.get("attempts", 1)), str(exc))
             logger.warning(

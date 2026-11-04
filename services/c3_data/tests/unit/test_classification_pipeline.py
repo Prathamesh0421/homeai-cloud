@@ -24,12 +24,16 @@ MODEL = {"model_id": "m1", "name": "yamnet", "version": "1.0.0", "label_map": {"
 
 
 class _FakeDetections:
-    def __init__(self, existing=False):
+    def __init__(self, existing=False, stored=None):
         self._existing = existing
+        self._stored = stored
         self.upserted: list[dict] = []
 
     def exists_for_media(self, media_id):
         return self._existing
+
+    def get_by_media(self, media_id):
+        return self._stored
 
     def upsert_by_media(self, detection):
         self.upserted.append(detection)
@@ -104,3 +108,20 @@ def test_handoff_pending_status_is_recorded(monkeypatch):
     p = _pipeline(monkeypatch, det, ev, _result(), on_detection=lambda d: "pending")
     out = p.classify(EV, MODEL, object(), object(), MODEL["label_map"])
     assert ev.analyzed == [("media-1", out["_id"], "pending")]
+
+
+def test_finish_existing_hands_off_and_marks_analyzed(monkeypatch):
+    stored = {"_id": "det-1", "media_id": "media-1", "top_label": "glass_break"}
+    det, ev, sent = _FakeDetections(existing=True, stored=stored), _FakeEvents(), []
+    p = _pipeline(monkeypatch, det, ev, _result(), on_detection=lambda d: sent.append(d) or "done")
+    assert p.finish_existing(EV) is stored
+    assert sent == [stored]  # same detection_id again: C2 answers duplicate
+    assert ev.analyzed == [("media-1", "det-1", "done")]
+    assert det.upserted == []
+
+
+def test_finish_existing_without_a_detection_does_nothing(monkeypatch):
+    det, ev = _FakeDetections(), _FakeEvents()
+    p = _pipeline(monkeypatch, det, ev, _result(), on_detection=lambda d: pytest.fail("sent"))
+    assert p.finish_existing(EV) is None
+    assert ev.analyzed == []

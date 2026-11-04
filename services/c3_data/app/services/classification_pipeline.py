@@ -189,3 +189,19 @@ class ClassificationPipeline:
 
         detection["_latency_ms"] = result.latency_ms
         return detection
+
+    def finish_existing(self, ev: dict) -> dict | None:
+        """Worker path for a clip whose detection is already stored but whose run never finished.
+
+        An earlier attempt saved the detection (step 6) and then failed or crashed before the
+        clip was marked analyzed, so it came back to the queue. Re-classifying would only hit
+        the dedupe, so finish the run instead: hand off to C2 again (idempotent on
+        ``detection_id``, so a repeat is safe) and mark the clip analyzed. The activity rollup
+        is not repeated. Returns the stored detection, or None if there is none.
+        """
+        detection = self._detections.get_by_media(ev["_id"])
+        if detection is None:
+            return None
+        handoff_status = self._on_detection(detection)
+        self._events.mark_analyzed(ev["_id"], detection["_id"], handoff_status)
+        return detection

@@ -140,7 +140,7 @@ loop:
 Run 1 worker by default; `docker compose up -d --scale c3-worker=2` must be safe (atomic claim).
 
 ### 4.2 `ClassificationPipeline.classify(ev, force=False, model=None)`
-1. If a detection exists for `media_id` and not `force` → 409 (API path) / skip (worker path).
+1. If a detection exists for `media_id` and not `force` → 409 (API path) / worker path: the detection was stored by an earlier attempt that failed later, so re-send the handoff and mark the clip analyzed (`finish_existing`).
 2. `bytes = s3.get_object(ev.s3.key)`; decode with ffmpeg to 16 kHz mono float32 (`ffmpeg -i pipe:0 -ac 1 -ar 16000 -f f32le pipe:1`); clip to 30 s; reject empty (422 `unreadable_clip`).
 3. `scores = yamnet(waveform)` → shape `(frames, 521)`; frame `i` covers `[0.48·i, 0.48·i + 0.96]` s.
 4. `labels = LabelMapper.apply(scores, label_map)`:
@@ -149,7 +149,7 @@ Run 1 worker by default; `docker compose up -d --scale c3-worker=2` must be safe
    (single frame → that frame); keep if ≥ `min_confidence`; record `source_class` (best class) and
    `start_s/end_s` of the best frame(s). Sort by confidence desc.
 5. Build detection (UUID, tenant/house/room from `ev`, model id/name/version, labels, top label or `"none"`).
-6. Upsert `ai_detections` by `media_id` (force replaces); set `media_events.status=analyzed, detection_id`.
+6. Upsert `ai_detections` by `media_id` (force replaces, keeping the detection's `_id`, so C2 answers `duplicate`); set `media_events.status=analyzed, detection_id`.
 7. `ActivityPatternService.rollup(detection)` (§4.5).
 8. Handoff (§4.3). Record latency in heartbeat stats.
 
