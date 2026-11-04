@@ -173,9 +173,13 @@ jobs:
         if: matrix.pkg.service && hashFiles(format('{0}/alembic.ini', matrix.pkg.path)) != ''
         working-directory: ${{ matrix.pkg.path }}
         run: |
-          # Separate database so the tests below start from a clean schema.
+          # Separate database so the tests below start from a clean schema. Migrate as each
+          # component's own role (cX_app from init.sql), as compose and AWS do, so a migration
+          # that needs more than its owner's privileges fails here, not at `make up`.
           for var in $(compgen -e | grep '^DATABASE_URL_'); do
-            export "$var=${!var%/homeai_test}/homeai_migrate"
+            role="$(echo "${var#DATABASE_URL_}" | tr '[:upper:]' '[:lower:]')_app"
+            url="${!var%/homeai_test}/homeai_migrate"
+            export "$var=${url/postgres:postgres@/${role}:devpass@}"
           done
           alembic upgrade head
           alembic downgrade base
