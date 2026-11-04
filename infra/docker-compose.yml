@@ -1,0 +1,190 @@
+# HomeAI Cloud — local development stack.
+# Owner: Renuka (P0-5). Source of truth: docs/03_REPO_AND_INFRA.md section 4.
+#
+# Brings up the data layer (Postgres, Mongo, LocalStack) plus every component
+# service behind a Caddy gateway. Run from the repo root:
+#
+#   docker compose -f infra/docker-compose.yml up -d
+#
+# The infra services (postgres, mongo, localstack) have no build dependency and
+# can be started on their own:
+#
+#   docker compose -f infra/docker-compose.yml up postgres mongo localstack
+#
+# App service build contexts are the repo root (so each Dockerfile can COPY the
+# shared library at libs/homeai_common). Services c1-iot and c3-data/-worker are
+# built once their code lands (Phase 2+); the definitions are present now so the
+# gateway routing and compose graph are complete.
+
+name: homeai
+
+services:
+  # ---------------------------------------------------------------- data layer
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: homeai
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d homeai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+      MONGO_INITDB_DATABASE: homeai
+    ports:
+      - "27017:27017"
+    volumes:
+      - ./mongo/init.js:/docker-entrypoint-initdb.d/init.js:ro
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  localstack:
+    image: localstack/localstack:3
+    environment:
+      SERVICES: s3,sns,secretsmanager
+      AWS_DEFAULT_REGION: ${AWS_REGION:-us-west-2}
+      S3_BUCKET: ${S3_BUCKET:-homeai-local}
+      DEBUG: "0"
+    ports:
+      - "4566:4566"
+    volumes:
+      - ./localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "awslocal s3 ls s3://${S3_BUCKET:-homeai-local} >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # ------------------------------------------------------------- app services
+  c4-dashboard:
+    build:
+      context: ..
+      dockerfile: services/c4_dashboard/Dockerfile
+    env_file: ../.env
+    environment:
+      RUN_MIGRATIONS: "1"
+    ports:
+      - "8004:8004"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8004/api/v1/health/c4').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  c1-iot:
+    build:
+      context: ..
+      dockerfile: services/c1_iot/Dockerfile
+    env_file: ../.env
+    environment:
+      RUN_MIGRATIONS: "1"
+    ports:
+      - "8001:8001"
+    depends_on:
+      c4-dashboard:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8001/api/v1/health/c1').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    profiles: ["c1"]
+
+  c2-alerts:
+    build:
+      context: ..
+      dockerfile: services/c2_alerts/Dockerfile
+    env_file: ../.env
+    environment:
+      RUN_MIGRATIONS: "1"
+      NOTIFIER: log
+    ports:
+      - "8002:8002"
+    depends_on:
+      c4-dashboard:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8002/api/v1/health/c2').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  c3-data:
+    build:
+      context: ..
+      dockerfile: services/c3_data/Dockerfile
+    env_file: ../.env
+    environment:
+      RUN_MIGRATIONS: "1"
+      HANDOFF_MODE: log
+    ports:
+      - "8003:8003"
+    depends_on:
+      c4-dashboard:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8003/api/v1/health/c3').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 40s
+    profiles: ["c3"]
+
+  c3-worker:
+    build:
+      context: ..
+      dockerfile: services/c3_data/Dockerfile
+    command: python -m app.worker
+    env_file: ../.env
+    environment:
+      HANDOFF_MODE: log
+    depends_on:
+      c3-data:
+        condition: service_healthy
+    profiles: ["c3"]
+
+  caddy:
+    build:
+      context: ..
+      dockerfile: infra/caddy/Dockerfile
+    env_file: ../.env
+    environment:
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "8080:80"
+    depends_on:
+      c4-dashboard:
+        condition: service_healthy
+      c2-alerts:
+        condition: service_healthy
+    profiles: ["gateway"]
+
+volumes:
+  pg-data:
+  mongo-data:
