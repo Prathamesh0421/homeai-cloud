@@ -103,3 +103,17 @@ class DefaultsRequest(BaseModel):
 
 class DefaultsResult(BaseModel):
     created: int
+
+
+class SyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    house_id: UuidStr | None = None  # omitted: every house with contacts or a topic
+
+
+class SyncResultOut(BaseModel):
+    topics: int
+    subscribed: int
+    pending: int
+    removed: int
+    failed: int = Field(description="houses skipped because SNS failed; retried on the next run")

@@ -138,6 +138,10 @@ class SettingsReader(Protocol):
 
     def contacts(self, house_id: str) -> list[Contact]: ...
 
+    def contact_houses(self) -> list[str]:
+        """Houses with at least one emergency contact (ContactSubscriptionSync)."""
+        ...
+
 
 class HouseReader(Protocol):
     def house(self, house_id: str) -> House | None: ...

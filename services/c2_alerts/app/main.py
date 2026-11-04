@@ -18,6 +18,7 @@ from app.gateways.notifier import LogNotifier, Notifier
 from app.gateways.secrets_gateway import AlertViewKeyProvider
 from app.gateways.sns_gateway import SnsGateway
 from app.gateways.types import DependencyUnavailableError
+from app.jobs.runner import JobRunner, start_scheduler
 from app.services.rate_limit import SlidingWindowLimiter
 from app.services.signed_link import SignedLinkService
 from app.settings import SERVICE_NAME, Settings, get_settings
@@ -55,12 +56,17 @@ def create_app(
     configure_logging(SERVICE_NAME, settings.log_level)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         # Engines, Mongo clients and JWKS fetches are lazy: startup never needs the network.
         if settings.database_url:
             db.configure_db(settings.database_url, reader_url=settings.database_reader_url)
         configure_jwks(settings.jwks_url)
+        scheduler = None
+        if settings.jobs_enabled and settings.database_url:
+            scheduler = start_scheduler(app.state.jobs)
         yield
+        if scheduler is not None:
+            scheduler.shutdown(wait=True)  # let a running job finish before the engines go
         db.dispose_db()
         mongo.close_mongo()
 
@@ -85,6 +91,7 @@ def create_app(
         public_base_url=settings.public_base_url,
     )
     app.state.notifier = make_notifier(settings)
+    app.state.jobs = JobRunner(notifier=app.state.notifier, links=app.state.links)
     app.state.alert_view_limiter = SlidingWindowLimiter(
         settings.alert_view_rate_limit_per_min, window_s=60
     )

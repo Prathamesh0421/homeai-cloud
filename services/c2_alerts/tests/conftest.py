@@ -33,6 +33,7 @@ def settings(monkeypatch) -> Settings:
         git_sha="test-sha",
         demo_mode=False,
         alert_view_key="a2V5LWZvci1jMi10ZXN0cy0wMDAwMDAwMDAwMDAwMDA=",  # base64, 32 bytes
+        jobs_enabled=False,  # no scheduler threads in tests; the jobs are called directly
     )
 
 

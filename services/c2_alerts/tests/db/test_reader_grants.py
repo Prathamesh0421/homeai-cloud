@@ -64,6 +64,7 @@ def test_reader_runs_the_contract_queries(reader):
     settings, houses = C4SettingsGateway(reader), C1HouseGateway(reader)
     assert settings.settings(HOUSE_A1) == MAPLE_SETTINGS
     assert [c.priority for c in settings.contacts(HOUSE_A1)] == [1, 2, 3]
+    assert settings.contact_houses() == [HOUSE_A1]
     assert houses.house(HOUSE_A1) == MAPLE
     assert houses.room(ROOM_A1_BATH) == BATH
     assert houses.houses([HOUSE_A1]) == {HOUSE_A1: MAPLE}

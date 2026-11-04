@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import boto3
 import pytest
 from app.gateways.notifier import NotifierError
@@ -198,3 +200,114 @@ def test_connection_errors_become_notifier_errors():
 
     with pytest.raises(NotifierError, match="EndpointConnectionError"):
         SnsGateway(Down()).ensure_topic(HOUSE)
+
+
+# --- ContactSubscriptionSync calls ----------------------------------------------------------
+
+
+def test_house_topics_across_pages_ignores_other_topics(sns):
+    gw, stub = sns
+    other = "arn:aws:sns:us-west-2:000000000000:billing-alerts"
+    house_b = "22222222-0000-0000-0000-0000000000b1"
+    stub.add_response(
+        "list_topics", {"Topics": [{"TopicArn": TOPIC}, {"TopicArn": other}], "NextToken": "p2"}, {}
+    )
+    stub.add_response(
+        "list_topics",
+        {"Topics": [{"TopicArn": f"arn:aws:sns:us-west-2:000000000000:homeai-house-{house_b}"}]},
+        {"NextToken": "p2"},
+    )
+    topics = gw.house_topics()
+    assert set(topics) == {HOUSE, house_b}
+    assert topics[HOUSE] == TOPIC
+    assert gw.ensure_topic(HOUSE) == TOPIC  # listed topics are cached: no CreateTopic
+
+
+def test_email_subscriptions_hide_the_pending_placeholder_arn(sns):
+    gw, stub = sns
+    stub.add_response(
+        "list_subscriptions_by_topic",
+        {
+            "Subscriptions": [
+                sub("dana@example.com"),
+                sub("cam@example.com", arn="PendingConfirmation"),
+                sub("+15550100", protocol="sms"),
+            ]
+        },
+        {"TopicArn": TOPIC},
+    )
+    subs = gw.email_subscriptions(TOPIC)
+    assert [(s.email, s.arn) for s in subs] == [
+        ("dana@example.com", SUB),
+        ("cam@example.com", None),
+    ]
+
+
+def test_unsubscribe(sns):
+    gw, stub = sns
+    stub.add_response("unsubscribe", {}, {"SubscriptionArn": SUB})
+    gw.unsubscribe(SUB)
+
+
+@pytest.mark.parametrize(
+    ("method", "call"),
+    [
+        ("list_topics", lambda gw: gw.house_topics()),
+        ("unsubscribe", lambda gw: gw.unsubscribe(SUB)),
+    ],
+)
+def test_sync_calls_map_errors(sns, method, call):
+    gw, stub = sns
+    stub.add_client_error(method, service_error_code="Throttling", http_status_code=400)
+    with pytest.raises(NotifierError, match=f"{method} failed: Throttling"):
+        call(gw)
+
+
+# --- a contact's email changed ----------------------------------------------------------------
+
+OLD = f"{TOPIC}:0ld00000-0000-4000-8000-000000000001"
+OTHER = f"{TOPIC}:07e00000-0000-4000-8000-000000000001"
+
+
+def test_new_address_replaces_the_contacts_old_subscription(sns):
+    gw, stub = sns
+    stub.add_response(
+        "list_subscriptions_by_topic",
+        {
+            "Subscriptions": [
+                sub("dana@old.example", arn=OLD),
+                sub("cam@example.com", arn=OTHER),
+                sub("ned@example.com", arn="PendingConfirmation"),  # skipped: no ARN to check
+            ]
+        },
+        {"TopicArn": TOPIC},
+    )
+    # Policies may come back reformatted by SNS; they are compared as JSON.
+    stub.add_response(
+        "get_subscription_attributes",
+        {"Attributes": {"FilterPolicy": json.dumps({"contact_id": [CONTACT]}, indent=1)}},
+        {"SubscriptionArn": OLD},
+    )
+    stub.add_response("unsubscribe", {}, {"SubscriptionArn": OLD})
+    stub.add_response(
+        "get_subscription_attributes",
+        {"Attributes": {"FilterPolicy": filter_policy("someone-else")}},
+        {"SubscriptionArn": OTHER},
+    )
+    stub.add_response("subscribe", {"SubscriptionArn": SUB}, None)
+    stub.add_response(
+        "get_subscription_attributes",
+        {"Attributes": {"PendingConfirmation": "true"}},
+        {"SubscriptionArn": SUB},
+    )
+    s = gw.ensure_subscription(TOPIC, "dana@new.example", CONTACT)
+    assert s.confirmed is False
+
+
+def test_unreadable_filter_policy_is_not_the_contact(sns):
+    from app.gateways.sns_gateway import _policy_contact
+
+    assert _policy_contact({"FilterPolicy": "not json"}) is None
+    assert _policy_contact({"FilterPolicy": '["x"]'}) is None
+    assert _policy_contact({"FilterPolicy": '{"contact_id": ["a", "b"]}'}) is None
+    assert _policy_contact({}) is None

@@ -58,3 +58,8 @@ class C4SettingsGateway:
             )
             for r in rows
         ]
+
+    def contact_houses(self) -> list[str]:
+        stmt = select(ec.c.house_id).distinct().order_by(ec.c.house_id)
+        rows = read_or_unavailable(self.session, SOURCE, lambda: self.session.scalars(stmt).all())
+        return [str(h) for h in rows]

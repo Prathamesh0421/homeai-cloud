@@ -33,6 +33,16 @@ class Subscription:
     arn: str | None = None
 
 
+@dataclass(frozen=True)
+class TopicSubscription:
+    """An email subscription found on a topic (ContactSubscriptionSync)."""
+
+    email: str
+    # None while pending on AWS (listed as "PendingConfirmation"): it cannot be unsubscribed,
+    # and SNS deletes an unconfirmed subscription after three days on its own.
+    arn: str | None
+
+
 class Notifier(Protocol):
     def ensure_topic(self, house_id: str) -> str: ...
 
@@ -41,6 +51,14 @@ class Notifier(Protocol):
     def publish(
         self, topic: str, message: EmailMessage, *, contact_id: str, alert_id: str, severity: str
     ) -> str: ...
+
+    def house_topics(self) -> dict[str, str]:
+        """``{house_id: topic}`` for every existing ``homeai-house-*`` topic."""
+        ...
+
+    def email_subscriptions(self, topic: str) -> list[TopicSubscription]: ...
+
+    def unsubscribe(self, arn: str) -> None: ...
 
 
 class LogNotifier:
@@ -71,6 +89,15 @@ class LogNotifier:
             },
         )
         return message_id
+
+    def house_topics(self) -> dict[str, str]:
+        return {}  # nothing is kept, so there is nothing to clean up
+
+    def email_subscriptions(self, topic: str) -> list[TopicSubscription]:
+        return []
+
+    def unsubscribe(self, arn: str) -> None:
+        pass
 
 
 def describe(email: str) -> str:

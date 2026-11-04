@@ -84,3 +84,32 @@ def test_publish_returns_a_message_id(sns_client, house):
         severity="high",
     )
     assert message_id
+
+
+def test_sync_calls_against_sns(sns_client, house):
+    gw = SnsGateway(sns_client)
+    topic = gw.ensure_topic(house)
+    assert SnsGateway(sns_client).house_topics()[house] == topic
+
+    gw.ensure_subscription(topic, "ned@example.com", str(uuid.uuid4()))
+    [sub] = gw.email_subscriptions(topic)
+    assert sub.email == "ned@example.com"
+    if sub.arn is not None:  # LocalStack lists pending subscriptions with a real ARN
+        gw.unsubscribe(sub.arn)
+        assert gw.email_subscriptions(topic) == []
+
+
+def test_changed_email_replaces_the_old_subscription(sns_client, house):
+    gw = SnsGateway(sns_client)
+    topic = gw.ensure_topic(house)
+    dana, cam = str(uuid.uuid4()), str(uuid.uuid4())
+    gw.ensure_subscription(topic, "dana@old.example", dana)
+    gw.ensure_subscription(topic, "cam@example.com", cam)
+    if any(s.arn is None for s in gw.email_subscriptions(topic)):
+        pytest.skip("this SNS lists pending subscriptions without an ARN (AWS behaviour)")
+
+    gw.ensure_subscription(topic, "dana@new.example", dana)
+    assert sorted(s.email for s in gw.email_subscriptions(topic)) == [
+        "cam@example.com",
+        "dana@new.example",
+    ]

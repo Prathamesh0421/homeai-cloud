@@ -10,6 +10,7 @@
 | alert_view_key_secret | ``C2_ALERT_VIEW_KEY_SECRET`` (Secrets Manager id of the HMAC key) |
 | alert_view_key | ``C2_ALERT_VIEW_KEY`` (base64 key; local override of Secrets Manager) |
 | c1_base_url | ``C1_BASE_URL`` (playback URLs) |
+| jobs_enabled | ``C2_JOBS_ENABLED`` (NotificationRetry + ContactSubscriptionSync; default on) |
 """
 
 from __future__ import annotations
@@ -41,6 +42,9 @@ class Settings(BaseServiceSettings):
     alert_view_key: str | None = None
     alert_view_rate_limit_per_min: int = 60
     c1_base_url: str = Field(default="http://c1-iot:8001", validation_alias="C1_BASE_URL")
+    # Background jobs in this process (each run takes a Postgres advisory lock, so several
+    # processes can have them on). Tests turn them off.
+    jobs_enabled: bool = True
 
 
 @lru_cache

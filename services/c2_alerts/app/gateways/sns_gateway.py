@@ -10,7 +10,13 @@ from typing import Any
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.gateways.notifier import TOPIC_PREFIX, NotifierError, Subscription, describe
+from app.gateways.notifier import (
+    TOPIC_PREFIX,
+    NotifierError,
+    Subscription,
+    TopicSubscription,
+    describe,
+)
 from app.services.email_render import EmailMessage
 
 logger = logging.getLogger(__name__)
@@ -20,6 +26,15 @@ PENDING = "PendingConfirmation"
 
 def filter_policy(contact_id: str) -> str:
     return json.dumps({"contact_id": [contact_id]})
+
+
+def _policy_contact(attrs: dict[str, str]) -> str | None:
+    """The contact a subscription's filter policy selects (SNS may reformat the JSON)."""
+    try:
+        ids = json.loads(attrs.get("FilterPolicy") or "{}").get("contact_id")
+    except (ValueError, AttributeError):
+        return None
+    return ids[0] if isinstance(ids, list) and len(ids) == 1 else None
 
 
 class SnsGateway:
@@ -68,6 +83,39 @@ class SnsGateway:
             self._topics[house_id] = arn
         return arn
 
+    def house_topics(self) -> dict[str, str]:
+        """Every ``homeai-house-<house_id>`` topic in the account (ListTopics is paginated)."""
+        topics: dict[str, str] = {}
+        kwargs: dict[str, Any] = {}
+        while True:
+            page = self._call("list_topics", self.sns.list_topics, **kwargs)
+            for entry in page.get("Topics", []):
+                arn = entry["TopicArn"]
+                name = arn.rsplit(":", 1)[-1]
+                if name.startswith(TOPIC_PREFIX):
+                    topics[name.removeprefix(TOPIC_PREFIX)] = arn
+            if not page.get("NextToken"):
+                break
+            kwargs["NextToken"] = page["NextToken"]
+        with self._lock:
+            self._topics.update(topics)
+        return topics
+
+    def email_subscriptions(self, topic: str) -> list[TopicSubscription]:
+        return [
+            TopicSubscription(
+                email=sub.get("Endpoint", ""),
+                arn=sub["SubscriptionArn"]
+                if sub.get("SubscriptionArn", "").startswith("arn:")
+                else None,
+            )
+            for sub in self.subscriptions(topic)
+            if sub.get("Protocol") == "email"
+        ]
+
+    def unsubscribe(self, arn: str) -> None:
+        self._call("unsubscribe", self.sns.unsubscribe, SubscriptionArn=arn)
+
     def subscriptions(self, topic: str) -> list[dict[str, Any]]:
         subs: list[dict[str, Any]] = []
         kwargs: dict[str, Any] = {"TopicArn": topic}
@@ -88,12 +136,16 @@ class SnsGateway:
         ``PendingConfirmation`` attribute: AWS lists pending subscriptions with the ARN
         ``PendingConfirmation``, LocalStack lists them with a real ARN.
         """
-        for sub in self.subscriptions(topic):
-            if sub.get("Protocol") == "email" and sub.get("Endpoint", "").lower() == email.lower():
+        subs = [s for s in self.subscriptions(topic) if s.get("Protocol") == "email"]
+        for sub in subs:
+            if sub.get("Endpoint", "").lower() == email.lower():
                 arn = sub.get("SubscriptionArn", "")
                 if not arn or arn == PENDING:
                     return Subscription(contact_id, email, confirmed=False)
                 return self._state(arn, email, contact_id)
+        # A new address for this contact: the old address's subscription carries the same
+        # filter policy, so it would get this contact's emails (and signed links) too.
+        self._drop_previous_addresses(subs, contact_id)
         created = self._call(
             "subscribe",
             self.sns.subscribe,
@@ -108,13 +160,30 @@ class SnsGateway:
         )
         return self._state(created["SubscriptionArn"], email, contact_id)
 
+    def _drop_previous_addresses(self, subs: list[dict[str, Any]], contact_id: str) -> None:
+        for sub in subs:
+            arn = sub.get("SubscriptionArn", "")
+            if not arn.startswith("arn:"):
+                continue  # pending on AWS: receives nothing, lapses on its own
+            attrs = self._call(
+                "get_subscription_attributes",
+                self.sns.get_subscription_attributes,
+                SubscriptionArn=arn,
+            ).get("Attributes", {})
+            if _policy_contact(attrs) == contact_id:
+                self._call("unsubscribe", self.sns.unsubscribe, SubscriptionArn=arn)
+                logger.info(
+                    "previous address unsubscribed",
+                    extra={"recipient": describe(sub.get("Endpoint", ""))},
+                )
+
     def _state(self, arn: str, email: str, contact_id: str) -> Subscription:
         attrs = self._call(
             "get_subscription_attributes", self.sns.get_subscription_attributes, SubscriptionArn=arn
         ).get("Attributes", {})
         if attrs.get("PendingConfirmation", "false") == "true":
             return Subscription(contact_id, email, confirmed=False)
-        if attrs.get("FilterPolicy") != filter_policy(contact_id):
+        if _policy_contact(attrs) != contact_id:
             self._call(
                 "set_subscription_attributes",
                 self.sns.set_subscription_attributes,

@@ -69,6 +69,11 @@ def test_contacts_in_priority_order(readers):
     assert settings.contacts(HOUSE_A2) == []
 
 
+def test_houses_with_contacts(readers):
+    settings, _ = readers
+    assert settings.contact_houses() == [HOUSE_A1]
+
+
 def test_house_lookup_hides_deleted_and_unknown(readers):
     _, houses = readers
     assert houses.house(HOUSE_A1) == MAPLE
@@ -104,6 +109,8 @@ def test_component_not_deployed_is_dependency_unavailable(session):
     assert exc.value.source == "c1"
     with pytest.raises(DependencyUnavailableError, match="c4"):
         C4SettingsGateway(session).contacts(HOUSE_A1)
+    with pytest.raises(DependencyUnavailableError, match="c4"):
+        C4SettingsGateway(session).contact_houses()
     # The reader session was rolled back and still works.
     assert session.execute(text("SELECT 1")).scalar() == 1
 

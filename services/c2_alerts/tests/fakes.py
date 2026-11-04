@@ -37,6 +37,10 @@ class FakeSettingsReader:
         self._check()
         return sorted(self._contacts.get(house_id, []), key=lambda c: c.priority)
 
+    def contact_houses(self) -> list[str]:
+        self._check()
+        return sorted(h for h, contacts in self._contacts.items() if contacts)
+
 
 class FakeHouseReader:
     def __init__(self, houses: Iterable[House] = (), rooms: Iterable[Room] = ()):
@@ -80,25 +84,58 @@ class FakeDetectionReader:
 
 
 class FakeNotifier:
-    """Records what would be sent; can leave contacts unconfirmed or make SNS fail."""
+    """Records what would be sent; can leave contacts unconfirmed or make SNS fail.
+
+    Keeps topics and email subscriptions like SNS does; a pending subscription has no ARN
+    (as on AWS), so it cannot be unsubscribed.
+    """
 
     def __init__(self) -> None:
-        from app.gateways.notifier import NotifierError, Subscription
+        from app.gateways.notifier import NotifierError, Subscription, TopicSubscription
 
         self._error = NotifierError
         self._subscription = Subscription
+        self._topic_subscription = TopicSubscription
         self.pending: set[str] = set()  # emails whose subscription is not confirmed yet
         self.fail_publish: set[str] = set()  # contact ids whose publish raises
         self.fail_topic = False
+        self.fail_houses: set[str] = set()  # houses whose topic calls raise
         self.published: list[dict] = []
+        self.topics: dict[str, str] = {}  # house_id -> topic
+        self.subscribed: dict[str, dict[str, str | None]] = {}  # topic -> {email: arn}
+        self.unsubscribed: list[str] = []
 
     def ensure_topic(self, house_id: str) -> str:
-        if self.fail_topic:
+        if self.fail_topic or house_id in self.fail_houses:
             raise self._error("sns create_topic failed: Throttling")
-        return f"arn:aws:sns:us-west-2:000000000000:homeai-house-{house_id}"
+        topic = f"arn:aws:sns:us-west-2:000000000000:homeai-house-{house_id}"
+        self.topics[house_id] = topic
+        return topic
 
     def ensure_subscription(self, topic: str, email: str, contact_id: str):
-        return self._subscription(contact_id, email, confirmed=email not in self.pending)
+        confirmed = email not in self.pending
+        subs = self.subscribed.setdefault(topic, {})
+        arn = f"{topic}:{contact_id}"
+        if email.lower() not in subs:  # new address: drop this contact's confirmed old one
+            for old, old_arn in list(subs.items()):
+                if old_arn == arn:
+                    del subs[old]
+                    self.unsubscribed.append(old_arn)
+        subs[email.lower()] = arn if confirmed else None
+        return self._subscription(contact_id, email, confirmed=confirmed)
+
+    def house_topics(self) -> dict[str, str]:
+        return dict(self.topics)
+
+    def email_subscriptions(self, topic: str):
+        return [self._topic_subscription(e, a) for e, a in self.subscribed.get(topic, {}).items()]
+
+    def unsubscribe(self, arn: str) -> None:
+        for subs in self.subscribed.values():
+            for email, sub_arn in list(subs.items()):
+                if sub_arn == arn:
+                    del subs[email]
+        self.unsubscribed.append(arn)
 
     def publish(self, topic, message, *, contact_id, alert_id, severity) -> str:
         if contact_id in self.fail_publish:

@@ -101,7 +101,7 @@ class NotificationService:
                 topic, contact.email, contact.contact_id
             )
             if not subscription.confirmed:
-                return self._fail(row, SUBSCRIPTION_PENDING)
+                return self.record_failure(row, SUBSCRIPTION_PENDING)
             token = self.links.issue(alert.alert_id, contact.contact_id, alert.triggered_at)
             expires = alert.triggered_at + LINK_TTL
             message = render_email(self._facts(alert, contact, self.links.link(token), expires))
@@ -113,9 +113,9 @@ class NotificationService:
                 severity=alert.severity,
             )
         except NotifierError as exc:
-            return self._fail(row, str(exc))
+            return self.record_failure(row, str(exc))
         except DependencyUnavailableError as exc:  # signing key unavailable
-            return self._fail(row, f"{exc.source}_unavailable")
+            return self.record_failure(row, f"{exc.source}_unavailable")
 
         row.status = "sent"
         row.attempt_count += 1
@@ -134,7 +134,8 @@ class NotificationService:
         )
         return row
 
-    def _fail(self, row: Notification, error: str) -> Notification:
+    def record_failure(self, row: Notification, error: str) -> Notification:
+        """Count a failed attempt on ``row`` and schedule the next one (none after the last)."""
         row.status = "failed"
         row.attempt_count += 1
         row.last_error = error[:500]

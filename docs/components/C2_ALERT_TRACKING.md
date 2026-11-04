@@ -133,7 +133,7 @@ Access: **O** = house_owner (own houses), **CS** = cloud_staff, **svc** = servic
 | `PUT /alert-rules/{id}` | CS | editable fields; header `If-Match: <version>` | 200 + new `ETag`; 412 `version_mismatch` `{current_version}`; 409 `duplicate_rule` when re-enabling into a duplicate |
 | `DELETE /alert-rules/{id}` | CS | — | soft delete, 204 |
 | `POST /alert-rules/defaults` **[D3]** | CS | `{tenant_id}` | creates missing tenant default rules; 200 `{created: n}` |
-| `POST /alert-rules/subscriptions/sync` **[D3]** | CS | `{house_id?}` | runs subscription sync now; `{topics, subscribed, pending, removed}` |
+| `POST /alert-rules/subscriptions/sync` **[D3]** | CS | `{house_id?}` | runs subscription sync now; `{topics, subscribed, pending, removed, failed}` (`failed` = houses skipped because SNS failed); 409 `sync_in_progress` while the 5-minute job runs; 503 if C4 contacts are unavailable |
 | `GET /alert-view/{token}` | public, rate-limited 60/min/IP | — | read-only view (below); 401 `token_expired`; 404 |
 Alert-view body: `{alert_type_name, severity, status, house_name, room_name, triggered_at, labels[], clip_url, expires_at}` — no owner/contact PII.
 Rule validation: `alert_type_code` exists; `trigger_labels` ⊆ the 7 home labels; `0 ≤ min_confidence ≤ 1`
@@ -198,8 +198,14 @@ token = `payload.sig`; `exp = triggered_at + 24h`. Verify: split (404), decode (
 ### 4.5 Jobs (APScheduler in the API process; guard with a Postgres advisory lock so only one runs)
 | Job | Every | Does |
 |---|---|---|
-| NotificationRetry | 60 s | `failed` email notifications with `attempt_count < 3` and `next_attempt_at ≤ now` → re-check subscription, republish; at most 3 attempts in total: next try +1 min after attempt 1, +2 min after attempt 2, then leave `failed` |
-| ContactSubscriptionSync | 5 min | for houses with contacts: ensure topic + subscription per contact (filter policy), unsubscribe removed contacts; logs pending confirmations |
+| NotificationRetry | 60 s | `failed` email notifications with `attempt_count < 3` and `next_attempt_at ≤ now` → re-check subscription, republish; at most 3 attempts in total: next try +1 min after attempt 1, +2 min after attempt 2, then leave `failed`. Also email rows still `queued` 5 min after `created_at` (a crash between insert and send). Contacts are re-read from C4 per house: removed → stop (`contact_removed`), changed email → current address (`SnsGateway.ensure_subscription` unsubscribes the old address's confirmed subscription with the same `contact_id` filter policy when it creates the new one; also on first sends), C4 down → try next run without using an attempt; an unexpected error counts as an attempt. Alert `false_positive`/`resolved` → stop (`alert_closed`); `acknowledged` is still emailed. Batch of 100, oldest first |
+| ContactSubscriptionSync | 5 min | for houses with contacts **and** houses that still have a `homeai-house-*` topic: ensure topic + subscription per contact (filter policy), unsubscribe addresses that are no longer contacts; logs pending confirmations. A pending subscription of a former contact is left alone (AWS cannot unsubscribe `PendingConfirmation`; it lapses after 3 days). SNS failure skips that house only |
+
+Implementation (`app/jobs/`): `JobRunner` (built in `create_app`, `app.state.jobs`) opens its own
+sessions (`c2_app`, `c2_reader`) per run; the lock is `pg_try_advisory_xact_lock` on a separate
+connection held for the whole run (the job commits row by row, which would release a lock taken
+on its own session), keys `RETRY_LOCK` / `SYNC_LOCK`. A run whose lock is held elsewhere is
+skipped. `C2_JOBS_ENABLED=0` turns the scheduler off (tests do).
 
 ---
 ## 5. Code structure
@@ -295,7 +301,7 @@ deadline for all of them.
 
 | Done | Tag | Stand-in | Where | Trigger | Action |
 |---|---|---|---|---|---|
-| [ ] | `STANDIN(C1-02)` | c1/c4 tables built from copied DDL in tests | `tests/db/foreign_tables.py` | C1 migration 0001 (Ekant) | Build them by running the real C1 + C4 migrations in the test DB; delete the DDL. Also update `test_real_reader_wiring_reports_c1_not_deployed` in `tests/db/test_rules_api.py` (503 `c1` → 422 unknown house) |
+| [ ] | `STANDIN(C1-02)` | c1/c4 tables built from copied DDL in tests | `tests/db/foreign_tables.py` | C1 migration 0001 (Ekant) | Build them by running the real C1 + C4 migrations in the test DB; delete the DDL. Also update `test_real_reader_wiring_reports_c1_not_deployed` in `tests/db/test_rules_api.py` (503 `c1` → 422 unknown house) and `test_default_wiring_uses_the_configured_databases` in `tests/db/test_jobs.py` (503 `c4` → a real sync result) |
 | [ ] | `STANDIN(contracts)` | Local `Detection` model for `ai_detections` | `app/gateways/types.py` | `homeai_common/contracts.py` (all owners) | Import `DetectionDoc`; delete the local classes |
 | [x] | `STANDIN(P0-5)` | Tests connect as the Postgres superuser | `tests/db/conftest.py` | `infra/db/init.sql` roles + grants (Renuka) | Add tests: `c2_reader` reads only the §4.5 tables and cannot write. Done in `tests/db/test_reader_grants.py` (tables created as `c1_app`/`c4_app`, checked with `SET ROLE c2_reader`); test tables get the same grants as the owning migrations (C4 0002, C1 0001), so "reads *only* those tables" is checked too |
 | [x] | `STANDIN(P0-5)` | CI creates schemas when `init.sql` is missing | `.github/workflows/ci.yml` | `infra/db/init.sql` (Renuka) | CI switches automatically; delete the fallback branch. Done: CI always runs `init.sql` |

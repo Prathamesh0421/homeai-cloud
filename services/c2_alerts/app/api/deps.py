@@ -21,6 +21,7 @@ from app.gateways.types import (
     HouseReader,
     SettingsReader,
 )
+from app.jobs.runner import JobRunner
 from app.services.quiet_hours import utc_now
 from app.services.signed_link import SignedLinkService
 from app.settings import Settings
@@ -66,6 +67,11 @@ def get_notifier(request: Request) -> Notifier:
 
 def get_links(request: Request) -> SignedLinkService:
     return request.app.state.links
+
+
+def get_jobs(request: Request) -> JobRunner:
+    """The job runner built in ``create_app`` (for the on-demand subscription sync)."""
+    return request.app.state.jobs
 
 
 ALERT_READER_ROLES = frozenset({"house_owner", "cloud_staff"})

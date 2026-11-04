@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import re
+from dataclasses import asdict
 
 from fastapi import APIRouter, Depends, Header, Query, Response, status
 from homeai_common.auth import Principal, require_roles
-from homeai_common.errors import ErrorEnvelope
+from homeai_common.errors import ApiError, ErrorEnvelope
 from homeai_common.pagination import Envelope, Page, PageParams, data_response, page_response
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_house_reader, get_session
+from app.api.deps import get_house_reader, get_jobs, get_session
 from app.gateways.types import HouseReader
+from app.jobs.runner import JobRunner
 from app.repositories.alert_type_repo import AlertTypeRepository
 from app.repositories.rule_repo import RuleRepository
 from app.repositories.scope import Scope
@@ -23,6 +25,8 @@ from app.schemas.rule import (
     RuleCreate,
     RuleOut,
     RuleUpdate,
+    SyncRequest,
+    SyncResultOut,
 )
 from app.services.rule_service import RuleService, invalid, rule_out
 
@@ -114,6 +118,32 @@ def create_defaults(
     service: RuleService = Depends(_service),
 ):
     return data_response({"created": service.create_defaults(body.tenant_id, principal.sub)})
+
+
+@router.post(
+    "/alert-rules/subscriptions/sync",
+    response_model=Envelope[SyncResultOut],
+    responses={
+        **ERRORS,
+        409: {
+            "model": ErrorEnvelope,
+            "description": "sync_in_progress: the 5-minute job is running",
+        },
+        503: {"model": ErrorEnvelope, "description": "C4 contacts (c2_reader) unavailable"},
+    },
+    summary="Run the SNS contact subscription sync now (one house, or all)",
+)
+def sync_subscriptions(
+    body: SyncRequest | None = None,
+    _: Principal = Depends(cloud_staff),
+    jobs: JobRunner = Depends(get_jobs),
+):
+    result = jobs.sync(body.house_id if body else None)
+    if result is None:
+        raise ApiError(
+            409, "sync_in_progress", "a subscription sync is already running; retry shortly"
+        )
+    return data_response(SyncResultOut(**asdict(result)))
 
 
 @router.post(
