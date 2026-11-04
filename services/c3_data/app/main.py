@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 
@@ -12,6 +13,7 @@ from homeai_common.errors import install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
+from app.db.mongo_indexes import ensure_indexes
 from app.settings import SERVICE_NAME, Settings, get_settings
 
 
@@ -35,6 +37,12 @@ def create_app(
         # Engines, Mongo clients and JWKS fetches are lazy: startup never needs the network.
         if settings.database_url:
             db.configure_db(settings.database_url, reader_url=settings.database_reader_url)
+        if settings.mongo_url:
+            # Idempotent; creates C3-owned indexes (ai_detections, activity_patterns,
+            # worker_heartbeats TTL). Tolerate Mongo being unreachable at startup so the
+            # API can still serve health/docs and report a degraded Mongo check.
+            with contextlib.suppress(Exception):
+                ensure_indexes(mongo.get_mongo_db(settings.mongo_url))
         configure_jwks(settings.jwks_url)
         yield
         db.dispose_db()
