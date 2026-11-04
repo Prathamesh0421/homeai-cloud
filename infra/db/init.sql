@@ -1,20 +1,26 @@
 -- HomeAI Cloud — PostgreSQL bootstrap (local dev / EC2 one-time)
 -- Owner: Renuka (P0-5). Source of truth: docs/02_CONTRACTS.md section 5.1.
 --
--- Runs once on first container start via /docker-entrypoint-initdb.d/.
--- Creates the single database `homeai`, one schema per component, an owner
--- (read/write) role and reader roles, and the cross-schema grants from the
--- contracts. Each service connects as cX_app; read-only connections use cX_reader.
+-- Creates one schema per component, an owner (read/write) role and reader
+-- roles, and the cross-schema grants from the contracts. Each service connects
+-- as cX_app; read-only connections use cX_reader.
 --
--- Idempotency: the Postgres image only runs this on an empty data dir, but we
--- still guard every object so the script is safe to re-run by hand on EC2.
+-- This script runs IN THE CURRENT DATABASE and does not switch connections, so
+-- it is portable across every way it is invoked:
+--   * Docker entrypoint  — postgres:16 runs /docker-entrypoint-initdb.d/*.sql
+--                           already connected to POSTGRES_DB (homeai).
+--   * CI                 — psql -d homeai_migrate|homeai_test -f init.sql
+--                           (CI creates these databases and runs this per-db).
+--   * EC2 / RDS          — psql -d homeai -f init.sql against the provisioned DB.
+-- Creating the database itself is the responsibility of the caller (POSTGRES_DB,
+-- RDS provisioning, or the CI "CREATE DATABASE" step) — not this file.
+--
+-- Idempotency: every object is guarded, so the script is safe to re-run.
 
--- The postgres image creates POSTGRES_DB for us; create it defensively anyway
--- when this file is run manually (e.g. against RDS).
-SELECT 'CREATE DATABASE homeai'
-WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'homeai')\gexec
-
-\connect homeai
+-- ---------------------------------------------------------------------------
+-- Extensions used by component schemas (c4 stores emails as citext).
+-- ---------------------------------------------------------------------------
+CREATE EXTENSION IF NOT EXISTS citext;
 
 -- ---------------------------------------------------------------------------
 -- Schemas (one per component)
