@@ -1,9 +1,9 @@
 """``c2_reader``'s Postgres privileges as ``infra/db/init.sql`` grants them (contract §4.5, §5.1).
 
-The c4/c1 tables are created as their owners (``c4_app``, ``c1_app``) like the real
-migrations, then the test switches to ``c2_reader`` with ``SET LOCAL ROLE``, so every
-statement after that is checked against that role's privileges. All inside the test's
-rolled-back transaction.
+The c4/c1 tables are created as their owners (``c4_app``, ``c1_app``) with the grants their
+migrations give (C4 0002 is tested against the real migration in C4's suite), then the test
+switches to ``c2_reader`` with ``SET LOCAL ROLE``, so every statement after that is checked
+against that role's privileges. All inside the test's rolled-back transaction.
 """
 
 from __future__ import annotations
@@ -96,17 +96,10 @@ def test_reader_has_no_access_to_other_schemas(reader, sql):
     denied(reader, sql)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "init.sql's default privileges give c2_reader SELECT on every table c1_app/c4_app "
-        "create (e.g. c4.users.password_hash); contract §5.1 limits it to houses, rooms, "
-        "house_service_settings and emergency_contacts. Raised with Renuka (init.sql) and "
-        "Mohit (C4 migration); drop this marker once the grants are narrowed."
-    ),
-)
 @pytest.mark.parametrize("owner", ["c1_app", "c4_app"])
 def test_reader_cannot_read_other_c1_c4_tables(owned, owner):
+    # A table the owner adds later (e.g. c4.users with password_hash) is not readable:
+    # init.sql sets no default privileges for c2_reader on c1/c4.
     schema = owner.removesuffix("_app")
     become(owned, owner)
     owned.execute(text(f"CREATE TABLE {schema}.c2_reader_probe (secret text)"))

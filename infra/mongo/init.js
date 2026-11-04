@@ -11,9 +11,10 @@
 //   activity_patterns c3_app readWrite; c4 reads
 //   dashboard_stats_daily  c4_app readWrite
 //
-// Mongo roles are database-scoped. We grant readWrite on `homeai` to each owner
-// and read on `homeai` to the shared reader. Collection-level isolation is
-// enforced in application code (each service only writes its own collections).
+// Built-in roles are database-scoped: each owner gets readWrite on `homeai`, and
+// isolation between owners is enforced in application code (each service only
+// writes its own collections). C2's reader gets a custom role limited to `find`
+// on ai_detections.
 
 const dbName = "homeai";
 const pwd = "devpass"; // dev only; AWS reads real secrets from Secrets Manager
@@ -36,8 +37,19 @@ ensureUser("c1_app", [{ role: "readWrite", db: dbName }]);
 ensureUser("c3_app", [{ role: "readWrite", db: dbName }]);
 ensureUser("c4_app", [{ role: "readWrite", db: dbName }]);
 
-// Reader: read-only on the homeai database (C2 reads ai_detections).
-ensureUser("c2_reader", [{ role: "read", db: dbName }]);
+// Reader: C2 may only read ai_detections (contracts 5.2), so it gets a custom
+// role with `find` on that one collection instead of the database-wide `read`.
+// (Health checks use `ping`, which needs no privilege.)
+const detectionsReader = "aiDetectionsRead";
+const detectionsPrivileges = [
+  { resource: { db: dbName, collection: "ai_detections" }, actions: ["find"] },
+];
+if (appDb.getRole(detectionsReader)) {
+  appDb.updateRole(detectionsReader, { privileges: detectionsPrivileges, roles: [] });
+} else {
+  appDb.createRole({ role: detectionsReader, privileges: detectionsPrivileges, roles: [] });
+}
+ensureUser("c2_reader", [{ role: detectionsReader, db: dbName }]);
 
 // Touch the core collections so they exist immediately (indexes are created by
 // the owning services' startup code — C1 for media_events, C3 for detections).

@@ -189,7 +189,7 @@ If a house has no settings row, C2 treats it as: all services enabled, no quiet 
 | `c3` | `c3_app` | — |
 | `c4` | `c4_app` | `c2_reader` (house_service_settings, emergency_contacts only), `c3_reader` (all except password_hash, secret_hash via a view `c4.users_public`) |
 Each service connects as `cX_app`; its read-only connection (if any) uses `cX_reader`. Migrations: Alembic,
-one `alembic/` per service, `version_table_schema` = own schema. `infra/db/init.sql` creates schemas, roles and grants.
+one `alembic/` per service, `version_table_schema` = own schema. `infra/db/init.sql` creates schemas, roles and schema `USAGE` grants, and default `SELECT` for readers that may see a whole schema. Where a reader may see only some tables (`c2_reader` on c1/c4, `c3_reader` on c4), the owning migration grants exactly those tables, and migrations run as the owner role `cX_app`.
 
 ### 5.2 MongoDB (container `mongo:7`, database `homeai`)
 | Collection | Owner (readWrite) | Readers |

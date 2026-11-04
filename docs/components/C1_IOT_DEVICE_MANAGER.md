@@ -83,6 +83,7 @@ CREATE TABLE c1.feed_config_versions (
   PRIMARY KEY (feed_id, version)
 );
 ```
+Grants (contract 02 §5.1): `infra/db/init.sql` gives `c3_reader`/`c4_reader` every c1 table, but `c2_reader` may read only houses and rooms, so `0001_initial` must end with `GRANT SELECT ON c1.houses, c1.rooms TO c2_reader` (skip it if the role does not exist; see C4 migration `0002_reader_grants.py`) and `downgrade()` revokes it. Without it C2 answers 503 `c1`.
 ### 2.2 MongoDB `media_events` (owner C1) — exact document in `02_CONTRACTS.md` §4.1
 Create indexes in a startup hook `ensure_indexes()`: `{status:1, uploaded_at:1}`,
 `{house_id:1, captured_at:-1}`, `{feed_id:1, client_clip_id:1}` unique with

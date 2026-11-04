@@ -91,33 +91,41 @@ GRANT USAGE ON SCHEMA c2 TO c3_reader;
 GRANT USAGE ON SCHEMA c4 TO c2_reader, c3_reader;
 
 -- ---------------------------------------------------------------------------
--- Default privileges so that tables CREATED LATER by each owner's migrations
--- automatically grant SELECT to the documented readers. Table-level SELECT on
--- already-existing tables is (re)applied by each service after its migrations;
--- these ALTER DEFAULT PRIVILEGES lines cover tables created from now on.
+-- Table-level SELECT.
 --
--- NOTE on contract nuance: c2_reader is only entitled to c1.houses/c1.rooms and
--- c4.house_service_settings/c4.emergency_contacts, and c3_reader must not see
--- password_hash/secret_hash in c4 (a c4.users_public view is used instead).
--- Column/table-level restriction is enforced by the owning service's migration
--- (it grants SELECT only on the permitted tables/view), not here. These broad
--- defaults are a convenience for dev; the owning migrations are authoritative.
+-- Where a reader may see every table of a schema, default privileges grant it
+-- for tables the owner's migrations create later, and GRANT ... ON ALL TABLES
+-- covers tables that already exist when this script is re-run.
+--
+-- Where a reader may see only some tables, the OWNING MIGRATION grants exactly
+-- those tables (contracts 5.1), because tables do not exist yet when this runs:
+--   c2_reader on c1: houses, rooms                       -> C1 migration (Ekant)
+--   c2_reader on c4: house_service_settings,
+--                    emergency_contacts                  -> C4 migration 0002
+--   c3_reader on c4: everything except password_hash /
+--                    secret_hash (users_public view)      -> C4 migration 0002
+-- No default privileges are set for those, so a new c1/c4 table is never
+-- readable by them by accident.
 -- ---------------------------------------------------------------------------
 
--- c1 tables readable by c2_reader, c3_reader, c4_reader
+-- c1 tables readable by c3_reader and c4_reader
 ALTER DEFAULT PRIVILEGES FOR ROLE c1_app IN SCHEMA c1
-  GRANT SELECT ON TABLES TO c2_reader, c3_reader, c4_reader;
+  GRANT SELECT ON TABLES TO c3_reader, c4_reader;
 
 -- c2 tables readable by c3_reader
 ALTER DEFAULT PRIVILEGES FOR ROLE c2_app IN SCHEMA c2
   GRANT SELECT ON TABLES TO c3_reader;
 
--- c4 tables readable by c2_reader and c3_reader (service migration narrows this)
+-- An earlier version of this script also gave c2_reader every c1/c4 table and
+-- c3_reader every c4 table by default; remove that from databases it bootstrapped.
+-- (Existing table grants are narrowed by the owning migrations, not here: a
+-- REVOKE on all tables would undo their grants whenever this script is re-run.)
+ALTER DEFAULT PRIVILEGES FOR ROLE c1_app IN SCHEMA c1
+  REVOKE SELECT ON TABLES FROM c2_reader;
 ALTER DEFAULT PRIVILEGES FOR ROLE c4_app IN SCHEMA c4
-  GRANT SELECT ON TABLES TO c2_reader, c3_reader;
+  REVOKE SELECT ON TABLES FROM c2_reader, c3_reader;
 
 -- Apply SELECT to any tables that already exist at bootstrap time (none on a
 -- fresh DB, but keeps the script correct when re-run after migrations).
-GRANT SELECT ON ALL TABLES IN SCHEMA c1 TO c2_reader, c3_reader, c4_reader;
+GRANT SELECT ON ALL TABLES IN SCHEMA c1 TO c3_reader, c4_reader;
 GRANT SELECT ON ALL TABLES IN SCHEMA c2 TO c3_reader;
-GRANT SELECT ON ALL TABLES IN SCHEMA c4 TO c2_reader, c3_reader;

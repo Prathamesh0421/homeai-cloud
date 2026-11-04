@@ -1,8 +1,8 @@
 """The c4/c1 tables C2 reads (contract §4.5), created inside a test's rolled-back transaction.
 
 Real columns (C4 migration 0001, C1 plan §2.1) minus foreign keys to tables C2 never reads.
-With ``as_owners=True`` the tables are created as ``c4_app`` / ``c1_app``, as the real
-migrations do, so ``infra/db/init.sql``'s default privileges apply to them.
+With ``as_owners=True`` the tables are created as ``c4_app`` / ``c1_app`` and get the grants
+the owning migrations give ``c2_reader`` (C4 migration 0002; C1's migration), as in the stack.
 """
 
 from __future__ import annotations
@@ -44,6 +44,10 @@ CREATE TABLE c1.rooms (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE (house_id, name));
 """
 
+# The only grants c2_reader gets on c1/c4 (contract 02 §5.1); init.sql grants schema USAGE.
+C4_GRANTS = "GRANT SELECT ON c4.house_service_settings, c4.emergency_contacts TO c2_reader;"
+C1_GRANTS = "GRANT SELECT ON c1.houses, c1.rooms TO c2_reader;"
+
 HOUSE_DELETED = "22222222-0000-0000-0000-0000000000dd"
 MAPLE_SETTINGS = HouseSettings(
     house_id=HOUSE_A1,
@@ -63,10 +67,12 @@ CONTACTS = [  # inserted out of order on purpose
 def create_tables(session: Session, *, as_owners: bool = False) -> None:
     if not as_owners:
         session.execute(text(SCHEMAS))  # init.sql creates them in the real stack
-    for owner, ddl in (("c4_app", C4_DDL), ("c1_app", C1_DDL)):
+    for owner, ddl, grants in (("c4_app", C4_DDL, C4_GRANTS), ("c1_app", C1_DDL, C1_GRANTS)):
         if as_owners:
             session.execute(text(f"SET LOCAL ROLE {owner}"))
         session.execute(text(ddl))
+        if as_owners:
+            session.execute(text(grants))
     if as_owners:
         session.execute(text("RESET ROLE"))
 
