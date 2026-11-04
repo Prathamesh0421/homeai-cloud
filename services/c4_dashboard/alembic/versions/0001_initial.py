@@ -19,7 +19,14 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute("CREATE SCHEMA IF NOT EXISTS c4")
+    # infra/db/init.sql creates the schema (owned by c4_app). Only create it when missing:
+    # CREATE SCHEMA IF NOT EXISTS checks the database-level CREATE privilege before it checks
+    # whether the schema exists, and c4_app does not have that privilege.
+    exists = (
+        op.get_bind().execute(sa.text("SELECT 1 FROM pg_namespace WHERE nspname = 'c4'")).first()
+    )
+    if not exists:
+        op.execute("CREATE SCHEMA c4")
     op.execute("CREATE EXTENSION IF NOT EXISTS citext")
 
     op.create_table(

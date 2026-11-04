@@ -18,4 +18,5 @@ COPY services/c4_dashboard ./
 ENV RUN_MIGRATIONS=0
 EXPOSE 8004
 
-CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS\" = \"1\" ]; then alembic upgrade head; fi; uvicorn app.main:app --host 0.0.0.0 --port 8004 --proxy-headers"]
+# A failed migration stops the container instead of serving with a missing schema.
+CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS\" = \"1\" ]; then alembic upgrade head || exit 1; fi; exec uvicorn app.main:app --host 0.0.0.0 --port 8004 --proxy-headers"]

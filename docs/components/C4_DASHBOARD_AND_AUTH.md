@@ -70,6 +70,7 @@ CREATE TABLE c4.service_clients (
 );
 CREATE TABLE c4.revoked_tokens (jti UUID PRIMARY KEY, expires_at TIMESTAMPTZ NOT NULL);
 ```
+Grants: migration `0002_reader_grants` gives `c2_reader` SELECT on house_service_settings and emergency_contacts only, and `c3_reader` everything except `password_hash`/`secret_hash` (`users_public` instead of `users`; `service_clients` without `secret_hash`). `init.sql` sets no default privileges on c4, so a new table needs its own GRANT in its migration.
 MongoDB `dashboard_stats_daily`: `{_id:"<house_id>:<yyyy-mm-dd>", tenant_id, house_id, date,
 alerts_by_severity:{critical,high,medium,low}, alerts_by_type:{...}, detections_by_label:{...},
 clips, feeds_active, generated_at}`; index `{tenant_id:1, date:-1}`, `{house_id:1, date:-1}`.
