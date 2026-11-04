@@ -13,9 +13,10 @@ from homeai_common.errors import install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
-from app.api import inference
+from app.api import inference, models
 from app.db.mongo_indexes import ensure_indexes
 from app.ml.model_cache import ModelCache
+from app.services.model_registry import bundled_class_names
 from app.settings import SERVICE_NAME, Settings, get_settings
 
 
@@ -62,6 +63,12 @@ def create_app(
     app.state.settings = settings
     # Process-level YAMNet + label-map cache; the TF model loads lazily on first use.
     app.state.model_cache = ModelCache(settings.model_dir)
+    # YAMNet class names for the label-map editor / validation; read from the bundled CSV
+    # (no TF load). Empty when the model is not bundled (e.g. unit tests), overridable in tests.
+    with contextlib.suppress(Exception):
+        app.state.class_names = bundled_class_names(settings.model_dir)
+    if not getattr(app.state, "class_names", None):
+        app.state.class_names = []
     install_error_handlers(app)
     app.add_middleware(RequestIdMiddleware)
 
@@ -73,5 +80,6 @@ def create_app(
         )
     )
     app.include_router(inference.router)
-    # More feature routers (models, records, ...) are added in later phases.
+    app.include_router(models.router)
+    # More feature routers (records, dictionary, ...) are added in later phases.
     return app
