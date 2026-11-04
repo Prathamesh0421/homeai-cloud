@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from fastapi import Request
-from homeai_common import db
+from homeai_common import db, mongo
+from homeai_common.errors import ApiError
+from pymongo.database import Database
 
 from app.ml.model_cache import ModelCache
 from app.settings import Settings
@@ -20,3 +22,16 @@ def get_app_settings(request: Request) -> Settings:
 def get_model_cache(request: Request) -> ModelCache:
     """Process-level YAMNet + label-map cache, built once in ``create_app``."""
     return request.app.state.model_cache
+
+
+def get_class_names(request: Request) -> list[str]:
+    """YAMNet 521 class display names, loaded once in ``create_app`` (tests may inject)."""
+    return request.app.state.class_names
+
+
+def get_mongo(request: Request) -> Database:
+    """C3's Mongo database handle, or 503 if MONGO_URL is not configured."""
+    settings: Settings = request.app.state.settings
+    if not settings.mongo_url:
+        raise ApiError(503, "dependency_unavailable", "mongo not configured")
+    return mongo.get_mongo_db(settings.mongo_url)
