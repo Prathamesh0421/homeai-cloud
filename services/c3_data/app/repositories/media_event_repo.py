@@ -27,6 +27,9 @@ class MediaEventRepo:
     def __init__(self, collection: Collection):
         self.collection = collection
 
+    def get(self, media_id: str) -> dict | None:
+        return self.collection.find_one({"_id": media_id})
+
     def claim_next(self, worker_id: str, now: datetime | None = None) -> dict | None:
         """Atomically claim the oldest queued (or timed-out processing) clip.
 
