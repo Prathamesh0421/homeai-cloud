@@ -43,7 +43,23 @@ export interface Envelope<T> {
   meta?: Record<string, unknown>;
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+export interface PageMeta {
+  page: number;
+  page_size: number;
+  total: number;
+}
+
+export interface Page<T> {
+  data: T[];
+  meta: PageMeta;
+}
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  keepEnvelope = false,
+): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -67,8 +83,9 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw new ApiError(resp.status, err.code ?? "unknown", err.message ?? "error", err.details);
   }
 
-  // Endpoints return {"data": ...}; unwrap. JWKS returns the object directly.
-  if (parsed && typeof parsed === "object" && "data" in parsed) {
+  // Endpoints return {"data": ...}; unwrap (lists keep {data, meta} for getPage).
+  // JWKS returns the object directly.
+  if (!keepEnvelope && parsed && typeof parsed === "object" && "data" in parsed) {
     return parsed.data as T;
   }
   return parsed as T;
@@ -76,6 +93,8 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 export const http = {
   get: <T>(path: string) => request<T>("GET", path),
+  /** A list endpoint's ``{data, meta: {page, page_size, total}}``. */
+  getPage: <T>(path: string) => request<Page<T>>("GET", path, undefined, true),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),

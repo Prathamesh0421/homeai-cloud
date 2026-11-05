@@ -13,6 +13,9 @@ import Login from "./features/c4-dashboard/Login";
 import HomeOverview from "./features/c4-dashboard/pages/HomeOverview";
 import OpsDashboard from "./features/c4-dashboard/pages/OpsDashboard";
 import IotFeeds from "./features/c4-dashboard/pages/IotFeeds";
+import AlertsPage from "./features/c2-alerts/AlertsPage";
+import AlertDetailPage from "./features/c2-alerts/AlertDetailPage";
+import { ToastProvider, ToastViewport } from "./shared/Toasts";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } },
@@ -50,6 +53,7 @@ function TenantsPlaceholder() {
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <ToastProvider>
       <AuthProvider>
         <BrowserRouter>
           <Routes>
@@ -64,6 +68,8 @@ export default function App() {
               <Route path="/home/overview" element={<RouteGuard allow={["house_owner"]}><HomeOverview /></RouteGuard>} />
               <Route path="/home/settings" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><SettingsPlaceholder /></RouteGuard>} />
               <Route path="/iot/feeds" element={<RouteGuard allow={["iot_staff", "cloud_staff"]}><IotFeeds /></RouteGuard>} />
+              <Route path="/alerts" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><AlertsPage /></RouteGuard>} />
+              <Route path="/alerts/:alertId" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><AlertDetailPage /></RouteGuard>} />
               <Route path="/ops/dashboard" element={<RouteGuard allow={["cloud_staff"]}><OpsDashboard /></RouteGuard>} />
               <Route path="/ops/tenants" element={<RouteGuard allow={["cloud_staff"]}><TenantsPlaceholder /></RouteGuard>} />
             </Route>
@@ -72,6 +78,8 @@ export default function App() {
           </Routes>
         </BrowserRouter>
       </AuthProvider>
+      <ToastViewport />
+      </ToastProvider>
     </QueryClientProvider>
   );
 }
