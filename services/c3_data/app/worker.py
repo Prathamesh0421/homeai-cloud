@@ -23,6 +23,7 @@ from types import FrameType
 from homeai_common import db, mongo
 from homeai_common.logging import configure_logging
 
+from app.gateways.alert_handoff_client import build_handoff
 from app.gateways.s3_gateway import S3ClipGateway
 from app.ml.model_cache import ModelCache
 from app.repositories.detection_repo import COLLECTION as DET_COLLECTION
@@ -74,7 +75,7 @@ class Worker:
             s3_get=s3.get_bytes,
             detection_repo=self.detections,
             media_event_repo=self.events,
-            # Phase 7 replaces this with the real C2 handoff; log mode for now.
+            on_detection=build_handoff(settings),  # HANDOFF_MODE: log or call C2
         )
 
         self.processed = 0

@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -37,6 +37,20 @@ test-common:
 
 test-c%:
 	cd services/c$*_* && $(PYTEST) -q
+
+# C3 Tier 2 integration tests against real Postgres + Mongo + LocalStack (brought up via
+# docker compose). Exports the same env the CI job uses, then tears the stack down.
+COMPOSE ?= docker compose -f infra/docker-compose.yml
+test-c3-int:
+	$(COMPOSE) up -d postgres mongo localstack
+	@echo "waiting for infra..."; sleep 8
+	cd services/c3_data && \
+	  DATABASE_URL_C3=postgresql+psycopg://c3_app:devpass@localhost:5432/homeai \
+	  MONGO_URL_C3=mongodb://c3_app:devpass@localhost:27017/homeai?authSource=homeai \
+	  S3_BUCKET=homeai-local AWS_REGION=us-west-2 AWS_ENDPOINT_URL=http://localhost:4566 \
+	  AWS_ACCESS_KEY_ID=test AWS_SECRET_ACCESS_KEY=test \
+	  $(PYTEST) -q -m integration; status=$$?; \
+	  cd ../.. && $(COMPOSE) down -v; exit $$status
 
 web:
 	cd web && npm run dev

@@ -33,3 +33,22 @@ class TestClassifyResult(BaseModel):
     frames: int
     duration_s: float
     latency_ms: int
+
+
+class ClassifyRequest(BaseModel):
+    media_id: str
+    force: bool = False
+
+
+class ClassifyResult(BaseModel):
+    detection_id: str
+    media_id: str
+    top_label: str
+    top_confidence: float
+    labels: list[LabelOut]
+    handoff_status: str
+
+
+class RequeueResult(BaseModel):
+    media_id: str
+    status: str

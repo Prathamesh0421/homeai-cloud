@@ -24,18 +24,32 @@ MODEL = {"model_id": "m1", "name": "yamnet", "version": "1.0.0", "label_map": {"
 
 
 class _FakeDetections:
+    """Contract-faithful fake: reproduces Mongo's _id immutability on replace.
+
+    Pinned to real behavior by tests/contract/test_detection_repo_contract.py (Tier 3).
+    """
+
     def __init__(self, existing=False, stored=None):
-        self._existing = existing
         self._stored = stored
         self.upserted: list[dict] = []
+        # A prior detection exists for EV's media_id when existing/stored is set.
+        self._by_media: dict[str, dict] = {}
+        if stored is not None:
+            self._by_media[stored["media_id"]] = stored
+        elif existing:
+            self._by_media["media-1"] = {"_id": "pre-existing", "media_id": "media-1"}
 
     def exists_for_media(self, media_id):
-        return self._existing
+        return media_id in self._by_media
 
     def get_by_media(self, media_id):
-        return self._stored
+        return self._by_media.get(media_id)
 
     def upsert_by_media(self, detection):
+        existing = self._by_media.get(detection["media_id"])
+        if existing is not None:
+            detection["_id"] = existing["_id"]  # Mongo: _id is immutable on replace
+        self._by_media[detection["media_id"]] = detection
         self.upserted.append(detection)
 
 

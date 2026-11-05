@@ -35,3 +35,26 @@ def get_mongo(request: Request) -> Database:
     if not settings.mongo_url:
         raise ApiError(503, "dependency_unavailable", "mongo not configured")
     return mongo.get_mongo_db(settings.mongo_url)
+
+
+def build_pipeline(request: Request, mdb: Database):
+    """A ClassificationPipeline wired to S3, the Mongo repos, and the HANDOFF_MODE hook.
+
+    Used by the synchronous classify/re-classify API path (the worker builds its own).
+    """
+    from app.gateways.alert_handoff_client import build_handoff
+    from app.gateways.s3_gateway import S3ClipGateway
+    from app.repositories.detection_repo import COLLECTION as DET
+    from app.repositories.detection_repo import DetectionRepo
+    from app.repositories.media_event_repo import COLLECTION as EV
+    from app.repositories.media_event_repo import MediaEventRepo
+    from app.services.classification_pipeline import ClassificationPipeline
+
+    settings: Settings = request.app.state.settings
+    s3 = S3ClipGateway(settings.s3_bucket, settings.aws_region, settings.aws_endpoint)
+    return ClassificationPipeline(
+        s3_get=s3.get_bytes,
+        detection_repo=DetectionRepo(mdb[DET]),
+        media_event_repo=MediaEventRepo(mdb[EV]),
+        on_detection=build_handoff(settings),
+    )

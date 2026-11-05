@@ -39,4 +39,8 @@ include = ["app*"]
 [tool.pytest.ini_options]
 addopts = "-ra --strict-markers"
 testpaths = ["tests"]
-markers = ["slow: real YAMNet inference on demo clips (run before demos)"]
+markers = [
+  "unit: pure logic, no external stores (default)",
+  "integration: needs real Postgres / Mongo / LocalStack (required on CI, skipped locally)",
+  "slow: real YAMNet inference on demo clips (run before demos)",
+]

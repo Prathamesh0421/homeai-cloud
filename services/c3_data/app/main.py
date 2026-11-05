@@ -13,7 +13,7 @@ from homeai_common.errors import install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
-from app.api import inference, models
+from app.api import inference, media_events, models
 from app.db.mongo_indexes import ensure_indexes
 from app.ml.model_cache import ModelCache
 from app.services.model_registry import bundled_class_names
@@ -81,5 +81,6 @@ def create_app(
     )
     app.include_router(inference.router)
     app.include_router(models.router)
+    app.include_router(media_events.router)
     # More feature routers (records, dictionary, ...) are added in later phases.
     return app
