@@ -2,7 +2,9 @@
 
 In local dev the key can be supplied directly via `C4_JWT_PRIVATE_KEY_PEM`
 (or generated on first run when `DEMO_MODE=1`). On AWS the key is fetched from
-Secrets Manager secret `homeai/jwt-signing-key` (JSON `{"current":..., "previous":...?}`).
+Secrets Manager secret `homeai/jwt-signing-key`, either a plain RSA private PEM (what
+docs/03 §8 and infra/localstack/init-aws.sh create; its kid is `C4_JWT_KID`) or JSON
+`{"current": {"kid", "pem"}, "previous": {...}?}` for key rotation.
 """
 
 from __future__ import annotations
@@ -32,8 +34,7 @@ def load_signing_keys(settings: Settings) -> tuple[SigningKey, SigningKey | None
     client = _client(settings)
     secret_id = settings.jwt_private_key_secret
     try:
-        response = client.get_secret_value(SecretId=secret_id)
-        payload: dict[str, Any] = json.loads(response["SecretString"])
+        secret: str = client.get_secret_value(SecretId=secret_id)["SecretString"]
     except client.exceptions.ResourceNotFoundException:  # type: ignore[attr-defined]
         if not settings.demo_mode:
             raise
@@ -50,6 +51,9 @@ def load_signing_keys(settings: Settings) -> tuple[SigningKey, SigningKey | None
             return generate_signing_key(settings.jwt_kid), None
         raise
 
+    if secret.lstrip().startswith("-----BEGIN"):
+        return _pem_to_signing_key(secret, settings.jwt_kid), None
+    payload: dict[str, Any] = json.loads(secret)
     current = _pem_to_signing_key(payload["current"]["pem"], payload["current"]["kid"])
     previous = None
     if payload.get("previous"):
