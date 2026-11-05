@@ -7,7 +7,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { vi } from "vitest";
 import { AuthProvider } from "../../auth/AuthProvider";
 import { ToastProvider, ToastViewport } from "../../shared/Toasts";
-import type { AlertDetail, AlertSummary } from "../../api/c2";
+import type { AlertDetail, AlertRule, AlertSummary, AlertType } from "../../api/c2";
 
 export const HOUSE = "22222222-0000-0000-0000-0000000000a1";
 
@@ -27,11 +27,16 @@ type Reply = { status?: number; body?: unknown } | ((init: RequestInit) => { sta
 
 /** ``stubFetch({"GET /api/v1/alerts": {...}})``: matched on method + path prefix (query ignored). */
 export function stubFetch(routes: Record<string, Reply>) {
-  const calls: { method: string; url: string; body: unknown }[] = [];
+  const calls: { method: string; url: string; body: unknown; headers: Record<string, string> }[] = [];
   const fetchMock = vi.fn(async (url: string, init: RequestInit = {}) => {
     const method = init.method ?? "GET";
     const path = url.split("?")[0];
-    calls.push({ method, url, body: init.body ? JSON.parse(String(init.body)) : undefined });
+    calls.push({
+      method,
+      url,
+      body: init.body ? JSON.parse(String(init.body)) : undefined,
+      headers: (init.headers ?? {}) as Record<string, string>,
+    });
     const key = Object.keys(routes).find(
       (k) => k.startsWith(`${method} `) && path === k.slice(method.length + 1),
     );
@@ -147,3 +152,52 @@ export function detail(overrides: Partial<AlertDetail> = {}): AlertDetail {
 export function page<T>(rows: T[], total = rows.length) {
   return { data: rows, meta: { page: 1, page_size: 25, total } };
 }
+
+export function rule(overrides: Partial<AlertRule> = {}): AlertRule {
+  return {
+    rule_id: "r0000000-0000-4000-8000-000000000001",
+    tenant_id: "11111111-0000-0000-0000-000000000001",
+    house_id: null,
+    scope: "tenant_default",
+    alert_type_code: "intrusion",
+    alert_type_name: "Possible intrusion",
+    trigger_labels: ["glass_break"],
+    min_confidence: 0.55,
+    room_id: null,
+    severity: null,
+    effective_severity: "high",
+    is_enabled: true,
+    version: 1,
+    false_positive_count_30d: 0,
+    created_by: "44444444-0000-0000-0000-000000000001",
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    ...overrides,
+  };
+}
+
+export const ALERT_TYPES: AlertType[] = [
+  {
+    code: "intrusion",
+    name: "Possible intrusion",
+    category: "security",
+    service_code: "intrusion",
+    trigger_label: "glass_break",
+    default_severity: "high",
+    default_min_confidence: 0.55,
+  },
+  {
+    code: "fall",
+    name: "Possible fall",
+    category: "safety",
+    service_code: "fall",
+    trigger_label: "fall_indicator",
+    default_severity: "high",
+    default_min_confidence: 0.6,
+  },
+];
+
+export const TENANTS = [
+  { tenant_id: "11111111-0000-0000-0000-000000000001", name: "Acme Care", timezone: "America/Los_Angeles", status: "active", created_at: "" },
+  { tenant_id: "11111111-0000-0000-0000-000000000002", name: "Sunrise Living", timezone: "America/New_York", status: "active", created_at: "" },
+];

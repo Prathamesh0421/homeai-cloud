@@ -34,6 +34,17 @@ export function FormPanel({ title, children, onSubmit, footer }: FormPanelProps)
 /** Extract per-field error messages from a contract error envelope. */
 export function fieldErrors(details: unknown): Record<string, string[]> {
   if (!details || typeof details !== "object") return {};
+  // Contract envelope (homeai_common.errors): details = [{field, issue}], field like
+  // "trigger_labels.0" -> grouped under its top-level name.
+  if (Array.isArray(details)) {
+    const out: Record<string, string[]> = {};
+    for (const item of details as Array<Record<string, unknown>>) {
+      if (typeof item?.field === "string" && item.field && typeof item.issue === "string") {
+        (out[item.field.split(".")[0]] ??= []).push(item.issue);
+      }
+    }
+    return out;
+  }
   const d = details as Record<string, unknown>;
   // FastAPI validation: {"details": [{"loc": ["body","field"], "msg": "..."}]}
   // Our service errors: {"fields": {"field": ["msg"]}} or {"field": "msg"}

@@ -15,6 +15,7 @@ import OpsDashboard from "./features/c4-dashboard/pages/OpsDashboard";
 import IotFeeds from "./features/c4-dashboard/pages/IotFeeds";
 import AlertsPage from "./features/c2-alerts/AlertsPage";
 import AlertDetailPage from "./features/c2-alerts/AlertDetailPage";
+import RulesPage from "./features/c2-alerts/RulesPage";
 import { ToastProvider, ToastViewport } from "./shared/Toasts";
 
 const queryClient = new QueryClient({
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="/alerts" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><AlertsPage /></RouteGuard>} />
               <Route path="/alerts/:alertId" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><AlertDetailPage /></RouteGuard>} />
               <Route path="/ops/dashboard" element={<RouteGuard allow={["cloud_staff"]}><OpsDashboard /></RouteGuard>} />
+              <Route path="/ops/alert-rules" element={<RouteGuard allow={["cloud_staff"]}><RulesPage /></RouteGuard>} />
               <Route path="/ops/tenants" element={<RouteGuard allow={["cloud_staff"]}><TenantsPlaceholder /></RouteGuard>} />
             </Route>
             <Route path="/" element={<RootRedirect />} />

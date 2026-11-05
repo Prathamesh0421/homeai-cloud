@@ -22,6 +22,7 @@ const NAV: NavItem[] = [
   { to: "/alerts", label: "Alerts", roles: ["house_owner", "cloud_staff"] },
   { to: "/ops/dashboard", label: "System Dashboard", roles: ["cloud_staff"] },
   { to: "/ops/tenants", label: "Tenants & Users", roles: ["cloud_staff"] },
+  { to: "/ops/alert-rules", label: "Alert Rules", roles: ["cloud_staff"] },
   { to: "/ops/models", label: "Models", roles: ["cloud_staff"] },
   { to: "/ops/records", label: "Records", roles: ["cloud_staff"] },
 ];

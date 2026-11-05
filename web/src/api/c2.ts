@@ -147,8 +147,118 @@ export function alertAction(
   );
 }
 
+// --- alert rules (cloud_staff) ----------------------------------------------------------------
+
+/** Home labels a rule can trigger on (contract §3). */
+export const HOME_LABELS = [
+  "smoke_alarm",
+  "distress_sound",
+  "glass_break",
+  "fall_indicator",
+  "cough",
+  "speech",
+  "dog",
+] as const;
+export type HomeLabel = (typeof HOME_LABELS)[number];
+
+export interface AlertRule {
+  rule_id: string;
+  tenant_id: string;
+  house_id: string | null;
+  scope: "tenant_default" | "house";
+  alert_type_code: string;
+  alert_type_name: string;
+  trigger_labels: string[];
+  min_confidence: number;
+  room_id: string | null;
+  severity: Severity | null; // null: the alert type's default (effective_severity)
+  effective_severity: Severity;
+  is_enabled: boolean;
+  version: number;
+  false_positive_count_30d: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RuleFilters {
+  tenantId?: string;
+  houseId?: string;
+  alertTypeCode?: string;
+  isEnabled?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface RuleCreate {
+  tenant_id?: string; // tenant-wide default (no house_id)
+  house_id?: string;
+  alert_type_code: string;
+  trigger_labels: string[];
+  min_confidence?: number;
+  room_id?: string;
+  severity?: Severity;
+  is_enabled?: boolean;
+}
+
+/** Omitted fields keep their value; ``null`` clears room / severity. */
+export interface RuleUpdate {
+  trigger_labels?: string[];
+  min_confidence?: number;
+  room_id?: string | null;
+  severity?: Severity | null;
+  is_enabled?: boolean;
+}
+
+export interface SyncResult {
+  topics: number;
+  subscribed: number;
+  pending: number;
+  removed: number;
+  failed: number;
+}
+
+export function rulesQuery(f: RuleFilters): string {
+  const q = new URLSearchParams();
+  if (f.tenantId) q.set("tenant_id", f.tenantId);
+  if (f.houseId) q.set("house_id", f.houseId);
+  if (f.alertTypeCode) q.set("alert_type_code", f.alertTypeCode);
+  if (f.isEnabled !== undefined) q.set("is_enabled", String(f.isEnabled));
+  q.set("page", String(f.page ?? 1));
+  q.set("page_size", String(f.pageSize ?? 50));
+  return q.toString();
+}
+
+export function listRules(f: RuleFilters): Promise<Page<AlertRule>> {
+  return http.getPage<AlertRule>(`/api/v1/alert-rules?${rulesQuery(f)}`);
+}
+
+export function getRule(ruleId: string): Promise<AlertRule> {
+  return http.get<AlertRule>(`/api/v1/alert-rules/${encodeURIComponent(ruleId)}`);
+}
+
+export function createRule(body: RuleCreate): Promise<AlertRule> {
+  return http.post<AlertRule>("/api/v1/alert-rules", body);
+}
+
+/** ``version`` is the rule's current version; a stale one answers 412 version_mismatch. */
+export function updateRule(ruleId: string, version: number, body: RuleUpdate): Promise<AlertRule> {
+  return http.put<AlertRule>(`/api/v1/alert-rules/${encodeURIComponent(ruleId)}`, body, {
+    headers: { "If-Match": `"${version}"` },
+  });
+}
+
+export function createTenantDefaults(tenantId: string): Promise<{ created: number }> {
+  return http.post<{ created: number }>("/api/v1/alert-rules/defaults", { tenant_id: tenantId });
+}
+
+export function syncSubscriptions(houseId?: string): Promise<SyncResult> {
+  return http.post<SyncResult>("/api/v1/alert-rules/subscriptions/sync", houseId ? { house_id: houseId } : {});
+}
+
 export const c2Keys = {
   alerts: (f: AlertFilters) => ["c2", "alerts", f] as const,
   alert: (alertId: string) => ["c2", "alert", alertId] as const,
   alertTypes: () => ["c2", "alert-types"] as const,
+  rules: (f: RuleFilters) => ["c2", "rules", f] as const,
 };

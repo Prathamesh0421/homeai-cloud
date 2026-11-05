@@ -54,13 +54,19 @@ export interface Page<T> {
   meta: PageMeta;
 }
 
+export interface RequestOptions {
+  /** Extra headers, e.g. ``{"If-Match": '"3"'}`` for optimistic concurrency. */
+  headers?: Record<string, string>;
+}
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
   keepEnvelope = false,
+  options: RequestOptions = {},
 ): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = { "Content-Type": "application/json", ...options.headers };
   const token = getToken();
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
@@ -96,7 +102,8 @@ export const http = {
   /** A list endpoint's ``{data, meta: {page, page_size, total}}``. */
   getPage: <T>(path: string) => request<Page<T>>("GET", path, undefined, true),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
-  put: <T>(path: string, body?: unknown) => request<T>("PUT", path, body),
+  put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
+    request<T>("PUT", path, body, false, options),
   patch: <T>(path: string, body?: unknown) => request<T>("PATCH", path, body),
   delete: <T>(path: string) => request<T>("DELETE", path),
 };
