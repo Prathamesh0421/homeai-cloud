@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -62,3 +62,7 @@ migrate:
 			cd $$svc && alembic upgrade head && cd -; \
 		fi; \
 	done
+
+# C4 owns its own seed until the master scripts/seed.py (P0-10) lands.
+seed-c4:
+	cd services/c4_dashboard && PYTHONPATH=$(CURDIR) $(PYTHON) -m app.seed

@@ -5,9 +5,13 @@ from __future__ import annotations
 from fastapi import FastAPI
 
 from app.api import auth as auth_router
+from app.api import contacts as contacts_router
 from app.api import health as health_router
 from app.api import jwks as jwks_router
 from app.api import service_tokens as service_tokens_router
+from app.api import settings as settings_router
+from app.api import tenants as tenants_router
+from app.api import users as users_router
 from app.errors import install_error_handlers
 
 
@@ -27,6 +31,10 @@ def create_app() -> FastAPI:
     app.include_router(jwks_router.router)
     app.include_router(auth_router.router)
     app.include_router(service_tokens_router.router)
+    app.include_router(settings_router.router)
+    app.include_router(contacts_router.router)
+    app.include_router(tenants_router.router)
+    app.include_router(users_router.router)
 
     @app.on_event("startup")
     def _configure_jwks() -> None:

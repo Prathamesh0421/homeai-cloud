@@ -1,0 +1,37 @@
+/** Barrel export for the shared UI kit (C4-11). */
+
+export { AppShell } from "./AppShell";
+export { ActionBar, Button } from "./ActionBar";
+export type { ButtonProps } from "./ActionBar";
+export { ChartCard } from "./ChartCard";
+export type { ChartCardProps } from "./ChartCard";
+export { ClipPlayer } from "./ClipPlayer";
+export { ConfidenceBars } from "./ConfidenceBars";
+export type { ConfidenceBarsProps } from "./ConfidenceBars";
+export { ConfirmDialog } from "./ConfirmDialog";
+export type { ConfirmDialogProps } from "./ConfirmDialog";
+export { DataTable } from "./DataTable";
+export type { Column, DataTableProps } from "./DataTable";
+export { EmptyState } from "./EmptyState";
+export type { EmptyStateProps } from "./EmptyState";
+export { ErrorState } from "./ErrorState";
+export type { ErrorStateProps } from "./ErrorState";
+export { Field, fieldErrors, FormPanel } from "./FormPanel";
+export type { FieldProps, FormPanelProps } from "./FormPanel";
+export { FilterBar } from "./FilterBar";
+export type { FilterBarProps } from "./FilterBar";
+export { KpiTile } from "./KpiTile";
+export type { KpiTileProps } from "./KpiTile";
+export { Pagination } from "./Pagination";
+export type { PaginationProps } from "./Pagination";
+export { SaveBar } from "./SaveBar";
+export type { SaveBarProps } from "./SaveBar";
+export { SeverityBadge } from "./SeverityBadge";
+export { SortableList } from "./SortableList";
+export type { SortableItem, SortableListProps } from "./SortableList";
+export { StatusChip } from "./StatusChip";
+export { Timeline } from "./Timeline";
+export type { TimelineProps } from "./Timeline";
+export { ToastProvider, ToastViewport, useToasts } from "./Toasts";
+export type { Toast, ToastTone } from "./Toasts";
+export * from "./tokens";

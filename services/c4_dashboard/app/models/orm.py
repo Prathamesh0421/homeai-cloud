@@ -47,8 +47,8 @@ class User(Base):
     )
 
     user_id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
-    tenant_id: Mapped[UUID] = mapped_column(
-        PG_UUID(as_uuid=True), ForeignKey("c4.tenants.tenant_id"), nullable=False
+    tenant_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True), ForeignKey("c4.tenants.tenant_id"), nullable=True
     )
     email: Mapped[str] = mapped_column(CITEXT, nullable=False, unique=True)
     password_hash: Mapped[str] = mapped_column(String(100), nullable=False)

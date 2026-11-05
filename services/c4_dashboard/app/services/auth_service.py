@@ -57,7 +57,7 @@ def login(
     token, jti, ttl = issuer.issue_user_token(
         user_id=str(user.user_id),
         role=user.role,
-        tenant_id=str(user.tenant_id),
+        tenant_id=str(user.tenant_id) if user.tenant_id else None,
         house_ids=[str(h) for h in user.house_ids],
         email=user.email,
     )
@@ -68,7 +68,7 @@ def login(
         "claims": {
             "sub": str(user.user_id),
             "role": user.role,
-            "tenant_id": str(user.tenant_id),
+            "tenant_id": str(user.tenant_id) if user.tenant_id else None,
             "house_ids": [str(h) for h in user.house_ids],
             "email": user.email,
             "jti": jti,
@@ -116,7 +116,7 @@ def issue_service_token(
 def public_user(user: User) -> dict:
     return {
         "user_id": str(user.user_id),
-        "tenant_id": str(user.tenant_id),
+        "tenant_id": str(user.tenant_id) if user.tenant_id else None,
         "email": user.email,
         "role": user.role,
         "display_name": user.display_name,
