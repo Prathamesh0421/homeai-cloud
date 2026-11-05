@@ -19,10 +19,10 @@ import { ApiError } from "../../api/http";
 import { Button, Field, FormPanel, fieldErrors, SEVERITY_LABEL, useToasts } from "../../shared";
 import { labelText } from "./format";
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
 
-interface FormState {
+export interface FormState {
   scope: "tenant_default" | "house";
   tenantId: string;
   houseId: string;
@@ -66,6 +66,24 @@ export function validate(f: FormState, editing: boolean): Record<string, string>
     }
   }
   return errors;
+}
+
+/**
+ * Only what the user changed. The server re-checks a room through C1 whenever ``room_id`` is in
+ * the body, so sending it unchanged would make every edit of a room rule depend on C1.
+ */
+export function changedFields(rule: AlertRule, f: FormState, minConfidence: number | undefined): RuleUpdate {
+  const body: RuleUpdate = {};
+  const sameLabels =
+    f.labels.length === rule.trigger_labels.length && f.labels.every((l) => rule.trigger_labels.includes(l));
+  if (!sameLabels) body.trigger_labels = f.labels;
+  if (minConfidence !== undefined && minConfidence !== rule.min_confidence) body.min_confidence = minConfidence;
+  const room = f.roomId.trim() || null;
+  if (room !== rule.room_id) body.room_id = room;
+  const severity = f.severity || null;
+  if (severity !== rule.severity) body.severity = severity;
+  if (f.isEnabled !== rule.is_enabled) body.is_enabled = f.isEnabled;
+  return body;
 }
 
 export interface RuleFormProps {
@@ -119,13 +137,8 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
     mutationFn: async (f: FormState) => {
       const minConfidence = f.minConfidence.trim() ? Number(f.minConfidence) : undefined;
       if (rule) {
-        const body: RuleUpdate = {
-          trigger_labels: f.labels,
-          room_id: f.roomId.trim() || null,
-          severity: f.severity || null,
-          is_enabled: f.isEnabled,
-          ...(minConfidence !== undefined ? { min_confidence: minConfidence } : {}),
-        };
+        const body = changedFields(rule, f, minConfidence);
+        if (Object.keys(body).length === 0) return null; // nothing to save
         return updateRule(rule.rule_id, version, body);
       }
       const body: RuleCreate = {
@@ -140,6 +153,10 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
       return createRule(body);
     },
     onSuccess: (saved) => {
+      if (saved === null) {
+        onCancel(); // edit form closed with no changes
+        return;
+      }
       push({ tone: "success", message: editing ? "Rule saved" : "Rule created" });
       onSaved(saved);
     },
@@ -159,11 +176,15 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
       }
       if (error.status === 412 && rule) {
         // Someone saved this rule meanwhile: load their version; the user re-applies changes.
-        const fresh = await getRule(rule.rule_id);
-        setForm(fromRule(fresh));
-        setVersion(fresh.version);
-        push({ tone: "warning", message: "This rule was changed by someone else. Reloaded the latest version." });
         onConflict();
+        try {
+          const fresh = await getRule(rule.rule_id);
+          setForm(fromRule(fresh));
+          setVersion(fresh.version);
+          push({ tone: "warning", message: "This rule was changed by someone else. Reloaded the latest version." });
+        } catch {
+          push({ tone: "warning", message: "This rule was changed by someone else. Close the form and open it again." });
+        }
         return;
       }
       push({ tone: "error", message: error.message });

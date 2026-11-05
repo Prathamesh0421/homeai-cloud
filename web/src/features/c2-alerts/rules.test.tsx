@@ -161,6 +161,21 @@ describe("RulesPage", () => {
     });
   });
 
+  it("applies the house filter only for a whole id", async () => {
+    const { calls } = routes();
+    renderRules();
+    await screen.findByText("Tenant default · Acme Care");
+    const input = screen.getByRole("textbox", { name: /^House id/ });
+    fireEvent.change(input, { target: { value: "2222" } });
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    fireEvent.change(input, { target: { value: HOUSE } });
+    await waitFor(() => {
+      const lists = calls.filter((c) => c.url.startsWith("/api/v1/alert-rules?"));
+      expect(lists.map((c) => c.url.includes("house_id="))).toEqual([false, true]); // no partial ids
+    });
+    expect(screen.getByText("Tenant default · Acme Care")).toBeInTheDocument();
+  });
+
   it("creates tenant defaults once a tenant is chosen", async () => {
     const { calls } = routes({ "POST /api/v1/alert-rules/defaults": { body: { data: { created: 7 } } } });
     renderRules();
@@ -357,13 +372,45 @@ describe("RuleForm", () => {
     expect(await screen.findByText("Rule saved")).toBeInTheDocument();
     const put = calls.find((c) => c.method === "PUT")!;
     expect(put.headers["If-Match"]).toBe('"5"');
-    expect(put.body).toEqual({
-      trigger_labels: ["glass_break"],
-      room_id: null,
-      severity: null,
-      is_enabled: true,
-      min_confidence: 0.55,
+    expect(put.body).toEqual({ severity: null }); // only what changed
+  });
+
+  it("sends only the changed field, so a room rule's edit does not depend on C1", async () => {
+    const roomRule = rule({ scope: "house", house_id: HOUSE, room_id: BATH, min_confidence: 0.7, version: 2 });
+    const { calls } = routes(
+      { "PUT /api/v1/alert-rules/r0000000-0000-4000-8000-000000000001": { body: { data: rule({ version: 3 }) } } },
+      [roomRule],
+    );
+    renderRules();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.change(form().getByLabelText("Minimum confidence (0–1)"), { target: { value: "0.75" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Rule saved");
+    expect(calls.find((c) => c.method === "PUT")!.body).toEqual({ min_confidence: 0.75 });
+  });
+
+  it("closes without a request when nothing changed", async () => {
+    const { calls } = routes();
+    renderRules();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(screen.queryByText(/^Edit rule:/)).not.toBeInTheDocument());
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+
+  it("on 412 says so even if reloading the rule fails", async () => {
+    routes({
+      "PUT /api/v1/alert-rules/r0000000-0000-4000-8000-000000000001": {
+        status: 412,
+        body: { error: { code: "version_mismatch", message: "stale" } },
+      },
+      "GET /api/v1/alert-rules/r0000000-0000-4000-8000-000000000001": { status: 503, body: { error: { code: "x", message: "x" } } },
     });
+    renderRules();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(form().getByRole("checkbox", { name: "Speech" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/Close the form and open it again/)).toBeInTheDocument();
   });
 
   it("on 412 loads the latest version into the form", async () => {
@@ -382,6 +429,7 @@ describe("RuleForm", () => {
     );
     renderRules();
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(form().getByRole("checkbox", { name: "Speech" })); // a change to save
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/changed by someone else. Reloaded the latest version/)).toBeInTheDocument();
     expect(form().getByLabelText("Minimum confidence (0–1)")).toHaveValue("0.8");

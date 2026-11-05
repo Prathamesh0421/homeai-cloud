@@ -29,7 +29,7 @@ import {
   type Column,
 } from "../../shared";
 import { labelText, percent } from "./format";
-import { RuleForm } from "./RuleForm";
+import { RuleForm, UUID } from "./RuleForm";
 
 const PAGE_SIZE = 50;
 const selectClass = "rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700";
@@ -67,6 +67,9 @@ export default function RulesPage() {
   const [editing, setEditing] = useState<Editing>(null);
   const [disabling, setDisabling] = useState<AlertRule | null>(null);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
+  // The house filter is typed: it applies only when empty or a whole UUID (the API rejects a
+  // partial one with 422), not on every keystroke.
+  const [houseText, setHouseText] = useState(params.get("house") ?? "");
 
   const rules = useQuery({
     queryKey: c2Keys.rules(filters),
@@ -249,7 +252,12 @@ export default function RulesPage() {
         />
       )}
 
-      <FilterBar onReset={() => setParams(new URLSearchParams(), { replace: true })}>
+      <FilterBar
+        onReset={() => {
+          setHouseText("");
+          setParams(new URLSearchParams(), { replace: true });
+        }}
+      >
         <label className="text-xs text-slate-500">
           Tenant{" "}
           <select className={selectClass} value={params.get("tenant") ?? ""} onChange={(e) => setFilter("tenant", e.target.value)}>
@@ -265,8 +273,14 @@ export default function RulesPage() {
           House id{" "}
           <input
             className={selectClass}
-            value={params.get("house") ?? ""}
-            onChange={(e) => setFilter("house", e.target.value.trim())}
+            value={houseText}
+            onChange={(e) => {
+              const text = e.target.value;
+              setHouseText(text);
+              const id = text.trim();
+              if (id === "" || UUID.test(id)) setFilter("house", id);
+            }}
+            aria-invalid={houseText.trim() !== "" && !UUID.test(houseText.trim())}
             placeholder="any"
           />
         </label>
