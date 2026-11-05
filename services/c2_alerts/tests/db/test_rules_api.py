@@ -48,7 +48,7 @@ def client(settings, session, houses):
 
 @pytest.fixture
 def staff(client, auth_header):
-    return auth_header(user_id=STAFF_USER, role="cloud_staff", tenant_id=TENANT_A)
+    return auth_header(user_id=STAFF_USER, role="cloud_staff", tenant_id=None)
 
 
 @pytest.fixture

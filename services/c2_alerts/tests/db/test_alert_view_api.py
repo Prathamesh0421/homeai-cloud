@@ -238,7 +238,7 @@ def test_demo_link_is_skipped_when_the_key_is_unavailable(
         "issue",
         lambda *a, **k: (_ for _ in ()).throw(DependencyUnavailableError("secrets")),
     )
-    staff = auth_header(role="cloud_staff", tenant_id=TENANT_A)
+    staff = auth_header(role="cloud_staff", tenant_id=None)
     r = c.get(f"/api/v1/alerts/{alert.alert_id}", headers=staff)
     assert r.status_code == 200
     assert {n["view_link"] for n in r.json()["data"]["notifications"]} == {None}

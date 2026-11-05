@@ -63,6 +63,9 @@ def client(make_client) -> TestClient:
 def auth_header(monkeypatch):
     """``auth_header(role=..., ...)`` -> Authorization header verified by a static test JWKS.
 
+    Mint tokens shaped like C4's: cloud_staff are platform users with ``tenant_id`` null
+    (C4 migration 0003), owners carry their tenant and ``house_ids``.
+
     Call it after the TestClient has started (app startup configures the real JWKS URL).
     """
     from homeai_common import auth

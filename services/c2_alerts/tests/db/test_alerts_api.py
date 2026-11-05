@@ -73,7 +73,7 @@ def who(client, auth_header):
         "owner_b1": auth_header(
             user_id=uid(), role="house_owner", tenant_id=TENANT_B, house_ids=[HOUSE_B1]
         ),
-        "staff": auth_header(user_id=STAFF_USER, role="cloud_staff", tenant_id=TENANT_A),
+        "staff": auth_header(user_id=STAFF_USER, role="cloud_staff", tenant_id=None),
         "iot": auth_header(user_id=uid(), role="iot_staff", tenant_id=TENANT_A),
         "c4": auth_header(service_scopes=["alerts:read"]),
         "c3": auth_header(service_scopes=["alerts:evaluate"]),

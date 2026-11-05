@@ -41,7 +41,7 @@ def client(settings, jobs):
 
 @pytest.fixture
 def staff(client, auth_header):
-    return auth_header(user_id=STAFF_USER, role="cloud_staff", tenant_id=TENANT_A)
+    return auth_header(user_id=STAFF_USER, role="cloud_staff", tenant_id=None)
 
 
 def test_sync_all_houses(client, staff, jobs):

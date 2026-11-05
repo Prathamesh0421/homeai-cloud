@@ -18,7 +18,7 @@ job **[D3 addition]**, signed alert view, C2 UI pages, demo helpers.
 | Needs | From | Contract | Stub until ready |
 |---|---|---|---|
 | JWT verify, service tokens | C4 | 02 §2 | `homeai_common.testing` keys |
-| House settings, contacts | C4 `c4.house_service_settings`, `c4.emergency_contacts` (read-only role) | 02 §4.5 | Seed rows inserted by `scripts/seed.py` (C4 tables exist after P0-7) |
+| House settings, contacts | C4 `c4.house_service_settings`, `c4.emergency_contacts` (read-only role) | 02 §4.5 | Seed rows from `make seed-c4` (C4-15, IDs in `scripts/seed_ids.py`); C2's default rules from `make seed-c2` |
 | House timezone, room names | C1 `c1.houses`, `c1.rooms` (read-only) | 02 §4.5 | seed |
 | Detections | C3 `ai_detections` (Mongo read-only) | 02 §4.2 | `scripts/demo/c2_fake_detection.py` (DEMO_MODE) |
 | Playback URL | C1 `GET /clips/{id}/playback-url` (service `clips:playback`) | 02 §4.4 | return `null` url, UI shows "clip unavailable" |
@@ -310,6 +310,6 @@ deadline for all of them.
 | [x] | `STANDIN(P0-5)` | Tests connect as the Postgres superuser | `tests/db/conftest.py` | `infra/db/init.sql` roles + grants (Renuka) | Add tests: `c2_reader` reads only the §4.5 tables and cannot write. Done in `tests/db/test_reader_grants.py` (tables created as `c1_app`/`c4_app`, checked with `SET ROLE c2_reader`); test tables get the same grants as the owning migrations (C4 0002, C1 0001), so "reads *only* those tables" is checked too |
 | [x] | `STANDIN(P0-5)` | CI creates schemas when `init.sql` is missing | `.github/workflows/ci.yml` | `infra/db/init.sql` (Renuka) | CI switches automatically; delete the fallback branch. Done: CI always runs `init.sql` |
 | [ ] | `STANDIN(C1-07)` *(C2-11)* | Playback URL `null` ("clip unavailable") | `app/services/alert_view.py` (`clip_url`); alert detail in C2-11 | C1 `GET /clips/{id}/playback-url` (Ekant) | Call it with service scope `clips:playback` |
-| [ ] | — *(C2-16)* | Detections faked with `c2_fake_detection.py` in integration | demo scripts | C3 worker handoff (Renuka, C3-09) | Run I-2/I-3 with real detections; keep the script as the demo fallback |
+| [ ] | — *(C2-16)* | Detections faked with `c2_fake_detection.py` in integration | demo scripts | C3 worker handoff (Renuka, C3-09) **landed 5 Nov**; still needs C1 (houses, clips) and `HANDOFF_MODE=call` for `c3-worker` in compose | Run I-2/I-3 with real detections; keep the script as the demo fallback |
 Permanent (not stand-ins): `tests/fakes.py` readers (kept honest by shared tests with the real
 gateways), `homeai_common.testing` keys, `NOTIFIER=log`, `alembic/env.py` creating schema `c2` if missing.

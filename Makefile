@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -67,3 +67,9 @@ migrate:
 # the seed only writes rows (as c4_app, from DATABASE_URL_C4).
 seed-c4:
 	cd services/c4_dashboard && alembic upgrade head && PYTHONPATH=$(CURDIR) $(PYTHON) -m app.seed
+
+# C2's part of the seed: the tenant default alert rules (one per alert type) for the seed
+# tenants in scripts/seed_ids.py. Migrations first; idempotent (as c2_app, DATABASE_URL_C2).
+# In the stack: docker compose -f infra/docker-compose.yml exec c2-alerts python -m app.seed
+seed-c2:
+	cd services/c2_alerts && alembic upgrade head && $(PYTHON) -m app.seed

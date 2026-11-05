@@ -249,7 +249,7 @@ def test_c3_reader_not_configured_is_503(client, c3, readers):
 def test_only_the_evaluate_scope_may_call(client, auth_header, readers):
     body = payload(stored(readers))
     for headers in (
-        auth_header(user_id=STAFF_USER, role="cloud_staff", tenant_id=TENANT_A),
+        auth_header(user_id=STAFF_USER, role="cloud_staff", tenant_id=None),
         auth_header(
             user_id=OWNER_USER, role="house_owner", tenant_id=TENANT_A, house_ids=[HOUSE_A1]
         ),

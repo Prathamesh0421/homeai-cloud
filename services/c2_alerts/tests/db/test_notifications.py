@@ -329,7 +329,7 @@ def test_evaluate_notifies_once_and_detail_shows_it(client, auth_header, session
     )
     assert len(notifier.published) == 3
 
-    staff = auth_header(role="cloud_staff", tenant_id=TENANT_A)
+    staff = auth_header(role="cloud_staff", tenant_id=None)
     notes = client.get(f"/api/v1/alerts/{r.json()['data']['alert_id']}", headers=staff).json()[
         "data"
     ]["notifications"]

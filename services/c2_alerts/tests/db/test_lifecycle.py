@@ -27,7 +27,7 @@ from tests.factories import (
     uid,
 )
 
-STAFF = Principal(kind="user", sub=STAFF_USER, role="cloud_staff", tenant_id=TENANT_A)
+STAFF = Principal(kind="user", sub=STAFF_USER, role="cloud_staff", tenant_id=None)
 
 
 def detection(**overrides) -> Detection:
