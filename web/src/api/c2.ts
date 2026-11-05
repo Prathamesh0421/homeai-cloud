@@ -1,6 +1,6 @@
 /** C2 Alert Tracking API client (docs/components/C2_ALERT_TRACKING.md §3). */
 
-import { http, type Page } from "./http";
+import { ApiError, http, type Page } from "./http";
 
 export type AlertStatus = "open" | "acknowledged" | "resolved" | "false_positive";
 export type Severity = "critical" | "high" | "medium" | "low";
@@ -256,9 +256,51 @@ export function syncSubscriptions(houseId?: string): Promise<SyncResult> {
   return http.post<SyncResult>("/api/v1/alert-rules/subscriptions/sync", houseId ? { house_id: houseId } : {});
 }
 
+// --- public alert view (no login) ---------------------------------------------------------------
+
+export interface AlertView {
+  alert_type_name: string;
+  severity: Severity;
+  status: AlertStatus;
+  house_name: string | null;
+  room_name: string | null;
+  triggered_at: string;
+  labels: { label: string; confidence: number }[];
+  clip_url: string | null;
+  expires_at: string;
+}
+
+/**
+ * ``GET /alert-view/{token}`` for the emergency contact who opened an email link. Plain fetch on
+ * purpose: no bearer token is sent, and a 401 here means "link expired", so it must not log out a
+ * signed-in user the way ``http`` does. Errors are ApiErrors; 429 carries ``retryAfter`` seconds.
+ */
+export async function getAlertView(token: string): Promise<AlertView> {
+  const resp = await fetch(`/api/v1/alert-view/${encodeURIComponent(token)}`);
+  const text = await resp.text();
+  let parsed: { data?: AlertView; error?: { code?: string; message?: string; details?: unknown } } | undefined;
+  try {
+    parsed = text ? JSON.parse(text) : undefined;
+  } catch {
+    parsed = undefined; // e.g. an HTML error page from the gateway
+  }
+  if (!resp.ok || !parsed?.data) {
+    const err = parsed?.error ?? {};
+    const retryAfter = Number(resp.headers.get("Retry-After") ?? "");
+    throw new ApiError(
+      resp.status,
+      err.code ?? "unknown",
+      err.message ?? resp.statusText,
+      Number.isFinite(retryAfter) && retryAfter > 0 ? { retryAfter } : err.details,
+    );
+  }
+  return parsed.data;
+}
+
 export const c2Keys = {
   alerts: (f: AlertFilters) => ["c2", "alerts", f] as const,
   alert: (alertId: string) => ["c2", "alert", alertId] as const,
   alertTypes: () => ["c2", "alert-types"] as const,
   rules: (f: RuleFilters) => ["c2", "rules", f] as const,
+  alertView: (token: string) => ["c2", "alert-view", token] as const,
 };

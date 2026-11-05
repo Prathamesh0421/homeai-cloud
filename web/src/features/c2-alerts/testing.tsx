@@ -23,7 +23,8 @@ export function signIn(role: "house_owner" | "cloud_staff" = "house_owner") {
   sessionStorage.setItem("homeai.token", `h.${btoa(JSON.stringify(claims))}.s`);
 }
 
-type Reply = { status?: number; body?: unknown } | ((init: RequestInit) => { status?: number; body?: unknown });
+type ReplyBody = { status?: number; body?: unknown; headers?: Record<string, string>; raw?: string };
+type Reply = ReplyBody | ((init: RequestInit) => ReplyBody);
 
 /** ``stubFetch({"GET /api/v1/alerts": {...}})``: matched on method + path prefix (query ignored). */
 export function stubFetch(routes: Record<string, Reply>) {
@@ -41,8 +42,9 @@ export function stubFetch(routes: Record<string, Reply>) {
       (k) => k.startsWith(`${method} `) && path === k.slice(method.length + 1),
     );
     const reply = key ? routes[key] : { status: 404, body: { error: { code: "not_found", message: "no stub" } } };
-    const { status = 200, body } = typeof reply === "function" ? reply(init) : reply;
-    return new Response(body === undefined ? "" : JSON.stringify(body), { status });
+    const { status = 200, body, headers, raw } = typeof reply === "function" ? reply(init) : reply;
+    const text = raw ?? (body === undefined ? "" : JSON.stringify(body));
+    return new Response(text, { status, headers });
   });
   vi.stubGlobal("fetch", fetchMock);
   return { calls, fetchMock };

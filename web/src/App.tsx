@@ -16,6 +16,7 @@ import IotFeeds from "./features/c4-dashboard/pages/IotFeeds";
 import AlertsPage from "./features/c2-alerts/AlertsPage";
 import AlertDetailPage from "./features/c2-alerts/AlertDetailPage";
 import RulesPage from "./features/c2-alerts/RulesPage";
+import AlertViewPage from "./features/c2-alerts/AlertViewPage";
 import { ToastProvider, ToastViewport } from "./shared/Toasts";
 
 const queryClient = new QueryClient({
@@ -59,6 +60,8 @@ export default function App() {
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<Login />} />
+            {/* Public, no shell: emergency contacts open this from the alert email. */}
+            <Route path="/alert-view/:token" element={<AlertViewPage />} />
             <Route
               element={
                 <RouteGuard allow={["house_owner", "iot_staff", "cloud_staff"]}>
