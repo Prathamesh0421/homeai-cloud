@@ -7,9 +7,13 @@ clients using the fixed IDs from ``scripts/seed_ids.py``. Run via::
     make seed-c4
 
 All upserts are idempotent: re-running updates fields in place without
-creating duplicates. User passwords default to ``Demo!2026``; service client
-secrets are read from environment variables
-(``SERVICE_CLIENT_SECRET_<UPPER_DASHES>``) and fall back to a dev secret.
+creating duplicates. User passwords default to ``Demo!2026``. Service client
+secrets come from the same variables the callers use (``.env.example``,
+LocalStack ``homeai/service-clients``): ``SERVICE_CLIENT_SECRET_C2`` for
+c2-alerts, ``..._C3`` for c3-worker and c3-data, ``..._C4``, ``..._DEVICE``.
+
+The schema comes from the migrations (``make migrate``); the seed only writes
+rows, so it runs as ``c4_app`` like the service.
 """
 
 from __future__ import annotations
@@ -24,7 +28,7 @@ from uuid import UUID
 import bcrypt
 from sqlalchemy.orm import Session
 
-from app.db.session import BASE_METADATA, session_scope
+from app.db.session import session_scope
 from app.models.orm import (
     EmergencyContact,
     HouseServiceSetting,
@@ -50,13 +54,24 @@ ALL_SERVICES = [
     "pet",
 ]
 
-# Default scopes per service client (mirrors docs/02_CONTRACTS.md §2.5).
+# Scopes per service client: exactly docs/02_CONTRACTS.md §2.3. Each client may request only
+# these (C4 rejects a scope outside the list), so a wrong entry breaks that call.
 SERVICE_CLIENT_SCOPES: dict[str, list[str]] = {
-    "c2-alerts": ["alerts:evaluate"],
-    "c3-worker": ["clips:read", "classifications:write"],
-    "c3-data": ["clips:read", "classifications:write", "models:read"],
-    "c4-dashboard": ["users:read", "tenants:read"],
-    "device-uploader": ["clips:write"],
+    "c2-alerts": ["clips:playback"],  # C2 -> C1 playback URL
+    "c3-worker": ["alerts:evaluate"],  # C3 -> C2 evaluate
+    "c3-data": ["alerts:evaluate"],  # C3 -> C2 evaluate (classify endpoint)
+    "c4-dashboard": ["feeds:read", "alerts:read", "records:read"],  # C4 -> C1/C2/C3 stats
+    "device-uploader": ["ingest:write"],  # uploader / device simulator -> C1 ingest
+}
+
+# client_id -> (env var, dev default): the names in .env.example and the LocalStack
+# homeai/service-clients secret, which the calling services read too.
+SERVICE_CLIENT_SECRETS: dict[str, tuple[str, str]] = {
+    "c2-alerts": ("SERVICE_CLIENT_SECRET_C2", "dev-c2-secret"),
+    "c3-worker": ("SERVICE_CLIENT_SECRET_C3", "dev-c3-secret"),
+    "c3-data": ("SERVICE_CLIENT_SECRET_C3", "dev-c3-secret"),
+    "c4-dashboard": ("SERVICE_CLIENT_SECRET_C4", "dev-c4-secret"),
+    "device-uploader": ("SERVICE_CLIENT_SECRET_DEVICE", "dev-device-secret"),
 }
 
 
@@ -64,27 +79,24 @@ def _hash(password: str) -> str:
     return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
 
 
-def _ensure_schema() -> None:
-    """Create the c4 schema, citext extension and tables if missing.
+def _require_schema() -> None:
+    """Fail with a clear message when the C4 migrations have not run yet.
 
-    In production Alembic owns the schema; this is a convenience for local dev
-    and the Makefile ``seed-c4`` target so a fresh checkout can seed without
-    running migrations first. Idempotent.
+    The seed used to create the schema and tables itself. As ``c4_app`` that fails
+    (``CREATE SCHEMA IF NOT EXISTS`` needs the database-level CREATE privilege), and tables
+    created outside Alembic miss the migrations' reader grants and break ``alembic upgrade``.
     """
-    from sqlalchemy import text
+    from sqlalchemy import inspect
 
     from app.db.session import get_engine
 
-    engine = get_engine()
-    with engine.begin() as conn:
-        conn.execute(text("CREATE EXTENSION IF NOT EXISTS citext"))
-        conn.execute(text("CREATE SCHEMA IF NOT EXISTS c4"))
-    BASE_METADATA.create_all(engine, checkfirst=True)
+    if not inspect(get_engine()).has_table("service_clients", schema="c4"):
+        raise SystemExit("c4 tables not found: run the C4 migrations first (make migrate)")
 
 
 def _client_secret(client_id: str) -> str:
-    env_key = "SERVICE_CLIENT_SECRET_" + client_id.upper().replace("-", "_")
-    return os.environ.get(env_key, f"dev-{client_id}-secret")
+    env_key, default = SERVICE_CLIENT_SECRETS[client_id]
+    return os.environ.get(env_key) or default
 
 
 def _upsert_tenant(session: Session, alias: str, tenant_id: UUID, name: str, tz: str) -> None:
@@ -213,7 +225,7 @@ def run() -> dict:
     """Seed the C4 schema. Returns a small summary dict."""
     from datetime import time
 
-    _ensure_schema()
+    _require_schema()
     with session_scope() as session:
         # tenants
         _upsert_tenant(session, "acme", UUID(TENANTS["acme"]), "Acme Care", "America/Los_Angeles")
@@ -236,7 +248,7 @@ def run() -> dict:
 
         ops_id = UUID(USERS["ops@homeai.test"][0])
 
-        # settings: Maple (quiet hours) and Oak (defaults)
+        # settings (docs/03 §7): Maple all on, quiet 22:00-07:00, medium; Oak wellness off, high
         maple_id = UUID(HOUSES["maple"][0])
         oak_id = UUID(HOUSES["oak"][0])
         acme_id = UUID(TENANTS["acme"])
@@ -246,7 +258,7 @@ def run() -> dict:
             tenant_id=acme_id,
             enabled_services=ALL_SERVICES,
             quiet_start=time(22, 0),
-            quiet_end=time(6, 0),
+            quiet_end=time(7, 0),
             sensitivity="medium",
             updated_by=ops_id,
         )
@@ -254,10 +266,10 @@ def run() -> dict:
             session,
             house_id=oak_id,
             tenant_id=acme_id,
-            enabled_services=ALL_SERVICES,
+            enabled_services=[svc for svc in ALL_SERVICES if svc != "wellness"],
             quiet_start=None,
             quiet_end=None,
-            sensitivity="medium",
+            sensitivity="high",
             updated_by=ops_id,
         )
 

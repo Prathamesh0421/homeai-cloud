@@ -63,6 +63,7 @@ migrate:
 		fi; \
 	done
 
-# C4 owns its own seed until the master scripts/seed.py (P0-10) lands.
+# C4 owns its own seed until the master scripts/seed.py (P0-10) lands. Migrations first:
+# the seed only writes rows (as c4_app, from DATABASE_URL_C4).
 seed-c4:
-	cd services/c4_dashboard && PYTHONPATH=$(CURDIR) $(PYTHON) -m app.seed
+	cd services/c4_dashboard && alembic upgrade head && PYTHONPATH=$(CURDIR) $(PYTHON) -m app.seed

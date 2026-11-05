@@ -16,13 +16,14 @@ anything you can call from C1/C2/C3. Older passes stay for history.
 |---|---|
 | C4-06 | Settings + emergency-contacts APIs. `GET/PUT /api/v1/houses/{id}/settings` (defaults when no row). Contacts CRUD + `PUT .../emergency-contacts/order`. Owner via `assert_house`; cloud_staff bypass. |
 | C4-07 | Tenants/users admin (cloud_staff only). `GET/POST /tenants`, `GET/POST /tenants/{id}/users`, `PATCH /users/{id}`. Password ≥ 10 with letters+digits. Best-effort C2 `POST /alert-rules/defaults` after tenant create. Migration `0003`: `users.tenant_id` nullable for platform staff. |
-| C4-15 | Idempotent seed: `make seed-c4` or `python -m app.seed` (from `services/c4_dashboard`, `PYTHONPATH` = repo root). Uses `scripts/seed_ids.py`. Password `Demo!2026`. Service secrets from `SERVICE_CLIENT_SECRET_*` (default `dev-<client>-secret`). |
+| C4-15 | Idempotent seed: `make seed-c4` (runs the C4 migrations, then `python -m app.seed` from `services/c4_dashboard`, `PYTHONPATH` = repo root). Uses `scripts/seed_ids.py`. Password `Demo!2026`. Service clients get the scopes of contract §2.3; secrets from the `.env.example` names (`SERVICE_CLIENT_SECRET_C2` → c2-alerts, `_C3` → c3-worker + c3-data, `_C4` → c4-dashboard, `_DEVICE` → device-uploader; dev defaults `dev-c2-secret` etc.). |
 | C4-11 | Shared UI kit in `web/src/shared` + typed helpers in `web/src/api/c4.ts` (settings/contacts/tenants/users). Pages still placeholders until C4-12/14. |
 
 **Teammate notes**
 - C2 can keep reading `c4.house_service_settings` / `emergency_contacts` after `make seed-c4`.
 - Demo login: `owner.maple@acme.test` / `Demo!2026`; ops: `ops@homeai.test` / `Demo!2026`.
-- Service token: client `c4-dashboard`, secret `dev-c4-dashboard-secret` (unless env override).
+- Service token: client `c4-dashboard`, secret `dev-c4-secret` (unless `SERVICE_CLIENT_SECRET_C4` is set), scopes `feeds:read`, `alerts:read`, `records:read`.
+- Seed fixes (5 Nov, Prathamesh; commit note has details): scopes now follow contract §2.3 (they did not match any caller, so e.g. C3's `alerts:evaluate` handoff token was refused), secrets use the `.env.example` names, the seed no longer creates the schema/tables (that failed as `c4_app` and skipped the migrations' reader grants), and Maple/Oak settings match docs/03 §7.
 - Tests this pass: 50 C4 + 9 web. `ruff` / `eslint` / `tsc` clean.
 
 ### Week 1 — 2 Nov 2026 (auth foundation)
