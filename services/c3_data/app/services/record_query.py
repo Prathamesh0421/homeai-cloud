@@ -10,13 +10,15 @@ per-entity whitelist. Secrets are never exposed (C4 tables are not browsable her
 # - C1 migrations have not shipped yet, so these tables do not exist.
 # - Until they do, queries against c1.* return empty results, not errors.
 # - When C1 migrations land on main:
-#   1. Remove the table-existence guard in _safe_c1_query().
-#   2. The c3_reader role already has SELECT on c1.* (see init.sql).
-#   3. No C3 migration or schema change is needed.
+#   1. Remove the table-absent guard in _safe_c1_query() (keep the 42501 re-raise).
+#   2. The c3_reader role already has SELECT on c1.* (see init.sql); confirm it took on RDS.
+#   3. Replace SELECT * on the c1 entities with an explicit column list + casts.
+#   4. No C3 migration or schema change is needed.
 """
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from datetime import datetime
 from typing import Any
@@ -27,7 +29,9 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 from sqlalchemy.exc import ProgrammingError
 
-from app.services.record_scope import RecordScope
+from app.services.record_scope import RecordScope, house_in_scope
+
+logger = logging.getLogger("c3.records")
 
 # Entities and the field filters allowed on each (docs §4.6: a per-entity whitelist).
 ENTITIES = {
@@ -48,6 +52,21 @@ ENTITIES = {
     },
 }
 
+# Which scope columns each SQL entity actually has (audit 4.1): declared in one place so a
+# wrong assumption about another component's schema is a failing contract test (see
+# tests/.../test_schema_contract), not a silent production 500. "tenant_via_house" means the
+# entity has no tenant_id of its own and must be scoped to the tenant through c1.houses.
+#   houses: tenant_id + house_id
+#   rooms:  house_id only -> tenant via house
+#   feeds (c1.camera_feeds): tenant_id + house_id  (to confirm against C1 at integration)
+#   alerts (c2.alerts): tenant_id + house_id
+SCOPE_COLUMNS = {
+    "houses": {"tenant_id", "house_id"},
+    "rooms": {"house_id", "tenant_via_house"},
+    "feeds": {"tenant_id", "house_id"},
+    "alerts": {"tenant_id", "house_id"},
+}
+
 # Timestamp column/field used for the from/to window and newest-first ordering, per entity.
 TIME_FIELD = {
     "houses": "created_at",
@@ -61,22 +80,27 @@ TIME_FIELD = {
 
 
 def _safe_c1_query(conn: Connection, sql: str, params: dict) -> list[dict]:
-    """Run a c1.* query; return [] if the relation does not exist yet (C1 not shipped).
+    """Run a c1.* query; return [] only if the relation does not exist yet (C1 not shipped).
 
-    See the C1 dependency note at the top of this module. Remove this guard once C1 migrations
-    land — c3_reader already has SELECT on c1.*.
+    Fail-closed rule: only undefined_table (42P01) means "C1 absent -> empty". A missing grant
+    (insufficient_privilege, 42501) is NOT swallowed — after C1 ships, a grant regression or a
+    misconfigured reader role would otherwise return empty lists in production forever while the
+    tests (which run with the table absent and expect empty) still pass. We log and re-raise so
+    it surfaces loudly. Pre-C1 the table is absent, so 42P01 fires first and behaviour is
+    unchanged.
     """
     try:
         rows = conn.execute(text(sql), params).mappings().all()
         return [dict(r) for r in rows]
     except ProgrammingError as exc:
-        # Until C1 ships, a c1.* read fails with undefined_table (42P01); and because the c1
-        # tables/grants don't exist yet, the reader role can also see insufficient_privilege
-        # (42501). Treat both as "C1 not available yet" -> empty, not an error. Once C1's
-        # migration lands (tables + the existing c3_reader grants apply), neither fires.
         sqlstate = getattr(exc.orig, "sqlstate", None) or ""
-        if sqlstate in ("42P01", "42501"):
+        if sqlstate == "42P01":  # undefined_table: C1 has not shipped
             return []
+        if sqlstate == "42501":  # insufficient_privilege: a real grant problem, fail loud
+            logger.warning(
+                "c1 read denied (insufficient_privilege); check c3_reader grants on c1.*",
+                extra={"sqlstate": sqlstate},
+            )
         raise
 
 
@@ -146,12 +170,13 @@ class RecordQuery:
     def _mongo_list(self, entity, spec, scope, house_id, from_, to, filters, offset, limit):
         col = self.mongo[spec["collection"]]
         q: dict[str, Any] = scope.mongo_filter()
-        if house_id:
-            # An explicit house_id must stay within scope: an owner asking for a house they do
-            # not own gets nothing, not someone else's data.
-            if scope.house_ids is not None and house_id not in set(scope.house_ids):
-                return [], 0
-            q["house_id"] = house_id
+        # Scope is the floor: an explicit house_id must sit inside it (shared helper, so the
+        # records list, stats, and SQL paths cannot drift from each other).
+        allowed, effective_house = house_in_scope(scope, house_id)
+        if not allowed:
+            return [], 0
+        if effective_house:
+            q["house_id"] = effective_house
         for k, v in filters.items():
             q[k] = v
         tf = TIME_FIELD[entity]
@@ -199,9 +224,12 @@ class RecordQuery:
             text(f"SELECT count(*) AS n FROM {table} {where}"), params
         ).scalar_one()
         params2 = {**params, "lim": limit, "off": offset}
+        cols = self._select_columns(entity)
         rows = (
             self.conn.execute(
-                text(f"SELECT * FROM {table} {where} ORDER BY {tf} DESC LIMIT :lim OFFSET :off"),
+                text(
+                    f"SELECT {cols} FROM {table} {where} ORDER BY {tf} DESC LIMIT :lim OFFSET :off"
+                ),
                 params2,
             )
             .mappings()
@@ -217,7 +245,8 @@ class RecordQuery:
         where, params = self._sql_where(entity, scope, None, None, None, {})
         clause = f"{where} AND {pk} = :rid" if where else f"WHERE {pk} = :rid"
         params = {**params, "rid": record_id}
-        sql = f"SELECT * FROM {table} {clause}"
+        cols = self._select_columns(entity)
+        sql = f"SELECT {cols} FROM {table} {clause}"
         if spec["store"] == "c1":
             return _safe_c1_query(self.conn, sql, params)
         rows = self.conn.execute(text(sql), params).mappings().all()
@@ -226,12 +255,22 @@ class RecordQuery:
     def _sql_where(self, entity, scope, house_id, from_, to, filters):
         clauses: list[str] = []
         params: dict[str, Any] = {}
-        has_tenant = entity != "rooms"  # c1.rooms has no tenant_id column
-        has_house = True
-        if scope.tenant_id is not None and has_tenant:
-            clauses.append("tenant_id = :tenant_id")
-            params["tenant_id"] = scope.tenant_id
-        if scope.house_ids is not None and has_house:
+        cols = SCOPE_COLUMNS.get(entity, {"tenant_id", "house_id"})
+
+        # Tenant dimension.
+        if scope.tenant_id is not None:
+            if "tenant_id" in cols:
+                clauses.append("tenant_id = :tenant_id")
+                params["tenant_id"] = scope.tenant_id
+            elif "tenant_via_house" in cols:
+                # rooms has no tenant_id: scope through its house so the tenant still applies.
+                clauses.append(
+                    "house_id IN (SELECT house_id FROM c1.houses WHERE tenant_id = :tenant_id)"
+                )
+                params["tenant_id"] = scope.tenant_id
+
+        # House dimension (owner's house list).
+        if scope.house_ids is not None:
             if scope.house_ids:
                 names = []
                 for i, h in enumerate(scope.house_ids):
@@ -241,9 +280,16 @@ class RecordQuery:
                 clauses.append(f"house_id IN ({', '.join(names)})")
             else:
                 clauses.append("1 = 0")  # owner with no houses sees nothing
-        if house_id:
+
+        # Explicit house_id: scope is the floor, gate it through the shared helper (hardening
+        # 4.7). Out of scope -> impossible clause so the result is empty, matching the Mongo path.
+        allowed, effective_house = house_in_scope(scope, house_id)
+        if not allowed:
+            clauses.append("1 = 0")
+        elif effective_house:
             clauses.append("house_id = :house_id")
-            params["house_id"] = house_id
+            params["house_id"] = effective_house
+
         for k, v in filters.items():
             params[k] = v
             clauses.append(f"{k} = :{k}")
@@ -270,6 +316,24 @@ class RecordQuery:
             "feeds": "c1.camera_feeds",
             "alerts": "c2.alerts",
         }[entity]
+
+    @staticmethod
+    def _select_columns(entity: str) -> str:
+        """Columns to select per SQL entity.
+
+        alerts: an explicit list (not SELECT *) so a C2 column add/rename does not leak in
+        unannounced, and the two Numeric columns are cast to float8 so the API returns numbers,
+        not Decimal-as-string (review item 4). rule_id and updated_at are C2 internals, omitted.
+        c1 entities keep SELECT * until C1 ships its schema (audit 4.8, C1-integration item).
+        """
+        if entity == "alerts":
+            return (
+                "alert_id, tenant_id, house_id, room_id, alert_type_id, detection_id, media_id, "
+                "top_label, top_confidence::float8 AS top_confidence, "
+                "threshold::float8 AS threshold, severity, status, "
+                "triggered_at, acknowledged_at, resolved_at"
+            )
+        return "*"
 
     @staticmethod
     def _pk(entity: str) -> str:
