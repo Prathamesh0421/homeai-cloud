@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -80,18 +80,28 @@ seed-c2:
 #   RDS_ENDPOINT=db.xxxx.rds.amazonaws.com:5432 TEAM=cmpe281 SITE_ADDRESS=homeai.duckdns.org \
 #     make deploy-env > .env
 COMPOSE_PROD ?= docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml
+# Services behind a compose profile are not started without it: the gateway (Caddy) and C3
+# always, C1 once services/c1_iot exists, and the Postgres container only when SKIP_RDS=1.
+PROD_PROFILES = --profile gateway --profile c3 \
+	$(if $(wildcard services/c1_iot/Dockerfile),--profile c1) \
+	$(if $(SKIP_RDS),--profile local-postgres-fallback)
 deploy-env:
 	@infra/aws/render_env.sh
 
 # Build and start the full stack on the EC2 host with the prod overlay.
 # Real S3/SNS/Secrets Manager come from the EC2 IAM role; no LocalStack.
+# The data layer starts first so set_passwords.sh can give the database roles and Mongo users
+# their Secrets Manager passwords (the ones render_env.sh wrote into .env) before the services
+# connect. SKIP_RDS=1 make deploy uses the Postgres container instead of RDS.
 deploy:
-	$(COMPOSE_PROD) up -d --build
+	$(COMPOSE_PROD) $(PROD_PROFILES) up -d --wait mongo $(if $(SKIP_RDS),postgres)
+	COMPOSE_PROD="$(COMPOSE_PROD)" SKIP_RDS=$(SKIP_RDS) infra/aws/set_passwords.sh
+	$(COMPOSE_PROD) $(PROD_PROFILES) up -d --build
 
 # Stop the prod stack (containers remain). Use `down -v` to also drop volumes.
 deploy-down:
-	$(COMPOSE_PROD) down
+	$(COMPOSE_PROD) $(PROD_PROFILES) down
 
 # Tail logs for the prod stack.
 deploy-logs:
-	$(COMPOSE_PROD) logs -f --tail=100
+	$(COMPOSE_PROD) $(PROD_PROFILES) logs -f --tail=100

@@ -31,8 +31,8 @@ CREATE SCHEMA IF NOT EXISTS c3;
 CREATE SCHEMA IF NOT EXISTS c4;
 
 -- ---------------------------------------------------------------------------
--- Roles. LOGIN roles with the dev password. On AWS the password comes from
--- Secrets Manager and this file is edited/parameterised before running.
+-- Roles. LOGIN roles with the dev password. On AWS, infra/aws/set_passwords.sh
+-- then sets each role's password from Secrets Manager (homeai/db/<role>).
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
@@ -59,6 +59,21 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'c4_reader') THEN
     CREATE ROLE c4_reader LOGIN PASSWORD 'devpass';
+  END IF;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- RDS: the master user is not a superuser. On PostgreSQL 16 creating a role
+-- gives its creator ADMIN on it but not membership, and ALTER DEFAULT
+-- PRIVILEGES FOR ROLE cX_app below then fails ("must be able to SET ROLE").
+-- Make a non-superuser caller a member of the owner roles first. Superusers
+-- (local Docker, CI) skip this.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+    EXECUTE format('GRANT c1_app, c2_app, c3_app, c4_app TO %I', current_user);
   END IF;
 END
 $$;

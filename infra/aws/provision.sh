@@ -90,17 +90,26 @@ if [ -z "${RDS_SG_ID}" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Secrets Manager (idempotent: create or update).
+# 3. Secrets Manager (idempotent: created once, never overwritten on a re-run).
 # ---------------------------------------------------------------------------
-DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -base64 24)}"
+# Hex passwords: RDS rejects "/", "@" and '"' in the master password (base64 has "/"), and
+# hex needs no escaping in connection URLs, SQL or .env.
+DB_PASSWORD="${DB_PASSWORD:-$(openssl rand -hex 24)}"
 JWT_PEM="${JWT_PEM:-$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 2>/dev/null)}"
 HMAC_KEY="$(openssl rand -base64 32)"
 
+# A secret that exists keeps its value: overwriting would change the RDS master password in
+# Secrets Manager only (not on RDS), and rotate the JWT and alert-link keys and every role
+# password under a running stack. To rotate on purpose, set ROTATE_SECRETS=1.
 upsert_secret() {
   local name="$1" value="$2"
   if aws secretsmanager describe-secret --secret-id "${name}" --region "${REGION}" >/dev/null 2>&1; then
-    aws secretsmanager put-secret-value --secret-id "${name}" --secret-string "${value}" --region "${REGION}" >/dev/null
-    echo "[provision] updated secret ${name}"
+    if [ -n "${ROTATE_SECRETS:-}" ]; then
+      aws secretsmanager put-secret-value --secret-id "${name}" --secret-string "${value}" --region "${REGION}" >/dev/null
+      echo "[provision] rotated secret ${name}"
+    else
+      echo "[provision] secret ${name} exists (kept)"
+    fi
   else
     aws secretsmanager create-secret --name "${name}" --secret-string "${value}" --region "${REGION}" >/dev/null
     echo "[provision] created secret ${name}"
@@ -110,13 +119,13 @@ upsert_secret() {
 upsert_secret "homeai/db/master" "${DB_PASSWORD}"
 upsert_secret "homeai/jwt-signing-key" "${JWT_PEM}"
 upsert_secret "homeai/alert-view-hmac" "${HMAC_KEY}"
-# Per-role DB passwords (services fetch their own at startup).
+# Per-role DB passwords (render_env.sh writes them into .env; set_passwords.sh sets them on the roles).
 for role in c1_app c2_app c2_reader c3_app c3_reader c4_app c4_reader; do
-  upsert_secret "homeai/db/${role}" "$(openssl rand -base64 24)"
+  upsert_secret "homeai/db/${role}" "$(openssl rand -hex 24)"
 done
-# Mongo users (container on EC2).
-for role in c2_reader c4_app; do
-  upsert_secret "homeai/mongo/${role}" "$(openssl rand -base64 24)"
+# Mongo users (container on EC2; every user infra/mongo/init.js creates).
+for role in c1_app c2_reader c3_app c4_app; do
+  upsert_secret "homeai/mongo/${role}" "$(openssl rand -hex 24)"
 done
 # Service client secrets (JSON; mirror localstack init-aws.sh).
 SERVICE_CLIENTS_JSON='{"c2-alerts":"dev-c2-secret","c3-data":"dev-c3-secret","c3-worker":"dev-c3-secret","c4-dashboard":"dev-c4-secret","device-uploader":"dev-device-secret"}'
@@ -173,7 +182,8 @@ if [ -z "${SKIP_RDS:-}" ]; then
   echo "[provision] RDS endpoint: ${RDS_ENDPOINT}:5432"
 else
   echo "[provision] SKIP_RDS=1 — Postgres will run as a container on EC2"
-  RDS_ENDPOINT="localhost:5432"
+  # The compose service name: "localhost" inside a container is the container itself.
+  RDS_ENDPOINT="postgres"
 fi
 
 # ---------------------------------------------------------------------------
@@ -224,11 +234,16 @@ echo
 echo "==========================================================================="
 echo " Provisioning complete. Next steps:"
 echo "   1. SSH to ${EIP} and install Docker + compose + awscli + postgresql-client."
-echo "   2. Clone this repo, then: RDS_ENDPOINT=${RDS_ENDPOINT} TEAM=${TEAM} \\"
-echo "        SITE_ADDRESS=<your-domain> make deploy-env > .env"
 if [ -z "${SKIP_RDS:-}" ]; then
-  echo "   3. Run init.sql once against RDS:"
-  echo "        PGPASSWORD='${DB_PASSWORD}' psql -h ${RDS_ENDPOINT%:*} -U ${DB_MASTER_USER} -d ${DB_NAME} -f infra/db/init.sql"
+  echo "   2. Clone this repo, then: RDS_ENDPOINT=${RDS_ENDPOINT}:5432 TEAM=${TEAM} \\"
+  echo "        SITE_ADDRESS=<your-domain> make deploy-env > .env"
+  echo "   3. Run init.sql once against RDS (master password is the secret homeai/db/master):"
+  echo "        PGPASSWORD=\"\$(aws secretsmanager get-secret-value --secret-id homeai/db/master --query SecretString --output text)\" \\"
+  echo "          psql -h ${RDS_ENDPOINT} -U ${DB_MASTER_USER} -d ${DB_NAME} -f infra/db/init.sql"
+  echo "   4. RDS_ENDPOINT=${RDS_ENDPOINT}:5432 make deploy   (then seed; see infra/aws/README.md)"
+else
+  echo "   2. Clone this repo, then: SKIP_RDS=1 TEAM=${TEAM} \\"
+  echo "        SITE_ADDRESS=<your-domain> make deploy-env > .env"
+  echo "   3. SKIP_RDS=1 make deploy   (the Postgres container runs init.sql itself; then seed)"
 fi
-echo "   4. make deploy   (then make seed-c4 against RDS)"
 echo "==========================================================================="
