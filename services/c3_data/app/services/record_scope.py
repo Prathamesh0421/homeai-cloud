@@ -33,6 +33,21 @@ class RecordScope:
         return flt
 
 
+def house_in_scope(scope: RecordScope, house_id: str | None) -> tuple[bool, str | None]:
+    """Whether an explicit house_id is allowed, and the effective house_id to filter by.
+
+    Scope is the floor: an explicit ``house_id`` may narrow a result within the caller's scope,
+    never widen or replace it. An out-of-scope house returns (False, None); the caller then
+    yields an empty result (not 403 — empty does not disclose whether the house exists). Used by
+    every path (records list, records get, stats) so the check cannot drift between them.
+    """
+    if not house_id:
+        return True, None
+    if scope.house_ids is not None and house_id not in set(scope.house_ids):
+        return False, None
+    return True, house_id
+
+
 def record_scope(principal: Principal, tenant_id: str | None = None) -> RecordScope:
     """Resolve the caller's scope for record reads."""
     if principal.is_user and principal.role == "house_owner":

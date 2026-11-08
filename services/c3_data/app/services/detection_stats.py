@@ -11,7 +11,7 @@ from typing import Any
 
 from pymongo.database import Database
 
-from app.services.record_scope import RecordScope
+from app.services.record_scope import RecordScope, house_in_scope
 
 GROUP_FIELDS = {
     "top_label": "$top_label",
@@ -31,8 +31,12 @@ def detection_stats(
 ) -> tuple[list[dict[str, Any]], int]:
     col = mongo["ai_detections"]
     match: dict[str, Any] = scope.mongo_filter()
-    if house_id:
-        match["house_id"] = house_id
+    # Scope is the floor: an explicit house_id must sit inside it, or the result is empty.
+    allowed, effective_house = house_in_scope(scope, house_id)
+    if not allowed:
+        return [], 0
+    if effective_house:
+        match["house_id"] = effective_house
     if from_ or to:
         window: dict[str, Any] = {}
         if from_:
