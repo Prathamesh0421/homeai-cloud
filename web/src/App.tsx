@@ -52,6 +52,28 @@ function TenantsPlaceholder() {
   );
 }
 
+function ModelsPlaceholder() {
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-semibold text-slate-900">Models</h1>
+      <div className="rounded border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
+        Model registry and deployment UI is built by C3.
+      </div>
+    </div>
+  );
+}
+
+function RecordsPlaceholder() {
+  return (
+    <div className="space-y-4">
+      <h1 className="text-2xl font-semibold text-slate-900">Records</h1>
+      <div className="rounded border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
+        Classification records UI is built by C3.
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -77,6 +99,8 @@ export default function App() {
               <Route path="/ops/dashboard" element={<RouteGuard allow={["cloud_staff"]}><OpsDashboard /></RouteGuard>} />
               <Route path="/ops/alert-rules" element={<RouteGuard allow={["cloud_staff"]}><RulesPage /></RouteGuard>} />
               <Route path="/ops/tenants" element={<RouteGuard allow={["cloud_staff"]}><TenantsPlaceholder /></RouteGuard>} />
+              <Route path="/ops/models" element={<RouteGuard allow={["cloud_staff"]}><ModelsPlaceholder /></RouteGuard>} />
+              <Route path="/ops/records" element={<RouteGuard allow={["cloud_staff"]}><RecordsPlaceholder /></RouteGuard>} />
             </Route>
             <Route path="/" element={<RootRedirect />} />
             <Route path="*" element={<Navigate to="/" replace />} />

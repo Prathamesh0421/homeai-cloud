@@ -10,6 +10,22 @@ anything you can call from C1/C2/C3. Older passes stay for history.
 
 ## Passes
 
+### C4-16 follow-up — 8 Nov 2026 (EC2 first deploy)
+
+| ID | What landed |
+|---|---|
+| C4-16 | First EC2 deploy on Free Tier (`t3.micro` + RDS `db.t3.micro`). Smoke green: C4 health, login, JWKS, `/auth/me`, SNS list-topics. |
+| fix | `render_env.sh` embeds real Secrets Manager DB/Mongo/service-client passwords (no `${PLACEHOLDER}`), includes C3 URLs, clears `AWS_ENDPOINT_URL` / `C4_AWS_ENDPOINT_URL` for real AWS; pairs with `set_passwords.sh` from `make deploy`. |
+| fix | C4 `Settings` now subclasses `homeai_common.config.BaseServiceSettings` so unprefixed `DEMO_MODE`, `AWS_ENDPOINT_URL`, `DATABASE_URL_C4` work; secrets gateway treats empty endpoint as real AWS (fixes login 500 that hit LocalStack). |
+| fix | `make seed-c4-docker` runs Alembic + seed inside the C4 container (host has no `alembic`); mounts repo for `scripts/seed_ids.py`. |
+| shell | `/ops/models` and `/ops/records` routes added as C3 placeholders (sidebar links no longer bounce to System Dashboard). |
+
+**Teammate notes**
+- On EC2: `make deploy-env > .env`, then compose with `--profile gateway`; seed with `make seed-c4-docker` (not host `make seed-c4`).
+- Demo URL: EC2 EIP on :80. Login `ops@homeai.test` / `Demo!2026`.
+- C1/C3 still not on the host; Alerts/Rules may error until C2 seed + SNS confirm + C1 houses exist.
+- Rebuild Caddy after pulling `web/src/App.tsx` so Models/Records placeholders appear.
+
 ### C4-16 — 7 Nov 2026 (AWS setup artifacts)
 
 | ID | What landed |
@@ -18,7 +34,7 @@ anything you can call from C1/C2/C3. Older passes stay for history.
 
 **Teammate notes**
 - Run `infra/aws/provision.sh` once (admin machine, not EC2) with `TEAM=… KEY_NAME=…`. Prints the EC2 EIP + RDS endpoint.
-- On EC2: `make deploy-env > .env` (with `RDS_ENDPOINT` + `SITE_ADDRESS`), then `make deploy`, then `make seed-c4` against RDS.
+- On EC2: `make deploy-env > .env` (with `RDS_ENDPOINT` + `SITE_ADDRESS`), then `make deploy`, then `make seed-c4-docker` against RDS.
 - `infra/aws/smoke.sh` checks health, login, JWKS, `/auth/me`, and SNS IAM role.
 - Fixes found while smoke-testing: `UserPublic.tenant_id` is now `str | None` (cloud_staff have no tenant); `conftest` drops the `c4.users_public` view before `BASE_METADATA.drop_all`.
 - `SKIP_RDS=1` keeps Postgres as a container on EC2 if RDS is slow (`07` §3 fallback).
@@ -57,5 +73,5 @@ anything you can call from C1/C2/C3. Older passes stay for history.
 ## Still open (later weeks)
 
 C4-08/09 dashboards + rollup · C4-12–14 feature pages · C4-17 Playwright.
-Master `scripts/seed.py` stays with its Phase 0 owner; until then use `make seed-c4`.
-C4-16 artifacts are in `infra/aws/`; the team runs `provision.sh` on Sun 8 Nov.
+Master `scripts/seed.py` stays with its Phase 0 owner; until then use `make seed-c4` (local) or `make seed-c4-docker` (EC2).
+C4-16 provision + first EC2 smoke are done (8 Nov); C1/C3 still need to join the stack for the full clip→alert path.

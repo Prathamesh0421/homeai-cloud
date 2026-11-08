@@ -5,37 +5,26 @@
 # Run on the EC2 host (or anywhere with the AWS CLI + an instance profile) and
 # redirect the output to .env:
 #
-#   infra/aws/render_env.sh > .env
+#   RDS_ENDPOINT=db.xxx.rds.amazonaws.com:5432 TEAM=cmpe281 \
+#     SITE_ADDRESS=:80 PUBLIC_BASE_URL=http://x.x.x.x \
+#     make deploy-env > .env
 #
-# Reads the resources already provisioned per 03 §8 (S3 bucket, RDS endpoint,
-# Secrets Manager secret names) and prints a .env suitable for the prod
-# compose overlay. The IAM role on the EC2 instance provides AWS credentials;
-# never put static keys in .env.
+# Fetches role passwords from Secrets Manager at render time so the .env has
+# no ${PLACEHOLDER} strings (those break Docker Compose). `make deploy` then
+# runs set_passwords.sh so Postgres roles and Mongo users match those values.
 #
-# Required env vars (set these before running, or pass as arguments):
-#   RDS_ENDPOINT   — host:port of the RDS instance, e.g. db.xxxxxx.us-west-2.rds.amazonaws.com:5432
-#                    (not needed with SKIP_RDS=1: the Postgres container, postgres:5432, is used)
-#   SITE_ADDRESS   — public domain for Caddy TLS, e.g. homeai.duckdns.org
-#   PUBLIC_BASE_URL — https://<SITE_ADDRESS>
-#   S3_BUCKET       — the provisioned bucket name (default homeai-<team>-<accountid>)
+# Required:
 #   TEAM            — short team tag used in the bucket name
-#
+#   RDS_ENDPOINT    — host:port of RDS (unless SKIP_RDS=1)
 # Optional:
-#   AWS_REGION      — defaults to us-west-2
-#   DB_NAME         — defaults to homeai
-#   MONGO_HOST      — defaults to mongo:27017 (the compose service; "localhost" inside a
-#                     container is the container itself)
-#   SKIP_RDS=1      — use the Postgres container instead of RDS (same as provision.sh)
-#
-# Passwords: each service connects as its own role (cX_app / cX_reader), never the RDS
-# master. The passwords are read from Secrets Manager (homeai/db/<role>, homeai/mongo/<user>,
-# homeai/service-clients) and written into .env; `make deploy` runs set_passwords.sh so the
-# database roles and Mongo users actually have them.
+#   SITE_ADDRESS, PUBLIC_BASE_URL, S3_BUCKET, AWS_REGION, DB_NAME, MONGO_HOST
+#   SKIP_RDS=1      — use the Postgres container (postgres:5432)
 
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-west-2}"
 DB_NAME="${DB_NAME:-homeai}"
+# Inside Compose, the mongo service DNS name is "mongo" (not localhost).
 MONGO_HOST="${MONGO_HOST:-mongo:27017}"
 SITE_ADDRESS="${SITE_ADDRESS:-:80}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-http://localhost:8080}"
@@ -44,8 +33,12 @@ if [ -n "${SKIP_RDS:-}" ]; then
   DB_HOST="postgres:5432"
 elif [ -n "${RDS_ENDPOINT:-}" ]; then
   DB_HOST="${RDS_ENDPOINT}"
+  case "${DB_HOST}" in
+    *:*) ;;
+    *) DB_HOST="${DB_HOST}:5432" ;;
+  esac
 else
-  echo "render_env.sh: RDS_ENDPOINT is required (host:port of the RDS instance), or set SKIP_RDS=1" >&2
+  echo "render_env.sh: RDS_ENDPOINT is required (host:port), or set SKIP_RDS=1" >&2
   exit 1
 fi
 if [ -z "${TEAM:-}" ]; then
@@ -73,10 +66,12 @@ mongo_url() {  # user
 client_secret() {  # client id in homeai/service-clients
   python3 -c 'import json, sys; print(json.loads(sys.argv[1])[sys.argv[2]])' "${CLIENTS_JSON}" "$1"
 }
+
+echo "[render_env] fetching secrets..." >&2
 CLIENTS_JSON="$(secret homeai/service-clients)"
 
 cat <<EOF
-# HomeAI Cloud — production .env rendered by infra/aws/render_env.sh
+# HomeAI Cloud — production .env (rendered $(date -u +%Y-%m-%dT%H:%MZ))
 # Do not commit. Regenerate after provisioning changes.
 
 ENV=prod
@@ -84,10 +79,11 @@ PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
 SITE_ADDRESS=${SITE_ADDRESS}
 DEMO_MODE=1
 
-# AWS — real services (no LocalStack endpoint). The EC2 instance role provides
-# credentials; AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are intentionally unset.
-# AWS_ENDPOINT_URL is left unset on AWS (LocalStack only).
+# AWS — real services (no LocalStack). Empty endpoint = use the real regional API.
+# C4_AWS_ENDPOINT_URL clears C4's old LocalStack default when present.
 AWS_REGION=${AWS_REGION}
+AWS_ENDPOINT_URL=
+C4_AWS_ENDPOINT_URL=
 S3_BUCKET=${S3_BUCKET}
 
 # Inter-service URLs (compose hostnames inside the EC2 docker network)
@@ -97,14 +93,15 @@ C1_BASE_URL=http://c1-iot:8001
 C2_BASE_URL=http://c2-alerts:8002
 C3_BASE_URL=http://c3-data:8003
 
-# PostgreSQL (${DB_HOST}). Each service connects as its own role; migrations run as
-# the owner role cX_app so the reader grants (init.sql default privileges) apply.
+# PostgreSQL (${DB_HOST}). Passwords from Secrets Manager (set_passwords.sh applies them).
 DATABASE_URL_C2=$(pg_url c2_app)
 DATABASE_READER_URL_C2=$(pg_url c2_reader)
+DATABASE_URL_C3=$(pg_url c3_app)
 DATABASE_URL_C4=$(pg_url c4_app)
 
-# MongoDB — container on the EC2 host (real Mongo, not DocumentDB)
+# MongoDB — container on the EC2 host (passwords aligned by set_passwords.sh)
 MONGO_URL_C2_READER=$(mongo_url c2_reader)
+MONGO_URL_C3=$(mongo_url c3_app)
 MONGO_URL_C4=$(mongo_url c4_app)
 
 # C4 JWT signing key (Secrets Manager id; the service fetches the PEM)
@@ -125,3 +122,5 @@ NOTIFIER=sns
 # C3 model directory (mounted volume on EC2)
 C3_MODEL_DIR=/models
 EOF
+
+echo "[render_env] wrote env for bucket=${S3_BUCKET} rds=${DB_HOST} mongo=${MONGO_HOST}" >&2

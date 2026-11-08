@@ -65,8 +65,19 @@ migrate:
 
 # C4 owns its own seed until the master scripts/seed.py (P0-10) lands. Migrations first:
 # the seed only writes rows (as c4_app, from DATABASE_URL_C4).
+# On EC2 (no local alembic): use `make seed-c4-docker` after the stack is up.
 seed-c4:
 	cd services/c4_dashboard && alembic upgrade head && PYTHONPATH=$(CURDIR) $(PYTHON) -m app.seed
+
+# Run migrations + seed inside the already-built c4 image (EC2). Mounts the
+# repo so scripts/seed_ids.py is importable.
+seed-c4-docker:
+	$(COMPOSE_PROD) exec -T c4-dashboard alembic upgrade head
+	$(COMPOSE_PROD) run --rm --no-deps \
+		-v $(CURDIR):/workspace:ro \
+		-e PYTHONPATH=/workspace \
+		-w /app \
+		c4-dashboard python -m app.seed
 
 # C2's part of the seed: the tenant default alert rules (one per alert type) for the seed
 # tenants in scripts/seed_ids.py. Migrations first; idempotent (as c2_app, DATABASE_URL_C2).

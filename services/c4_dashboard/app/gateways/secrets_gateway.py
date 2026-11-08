@@ -20,8 +20,11 @@ from app.settings import Settings
 
 def _client(settings: Settings):
     kwargs = {"region_name": settings.aws_region}
-    if settings.aws_endpoint_url:
-        kwargs["endpoint_url"] = settings.aws_endpoint_url
+    # Prefer aws_endpoint (empty string → None) so prod .env with AWS_ENDPOINT_URL=
+    # talks to real Secrets Manager, not LocalStack.
+    endpoint = getattr(settings, "aws_endpoint", None) or settings.aws_endpoint_url or None
+    if endpoint:
+        kwargs["endpoint_url"] = endpoint
     return boto3.client("secretsmanager", **kwargs)
 
 
