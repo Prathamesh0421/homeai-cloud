@@ -13,11 +13,14 @@ from homeai_common.errors import install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
-from app.api import inference, media_events, models
+from app.api import detections, inference, media_events, models, records
 from app.db.mongo_indexes import ensure_indexes
 from app.ml.model_cache import ModelCache
 from app.services.model_registry import bundled_class_names
+from app.services.rate_limit import SlidingWindowLimiter
 from app.settings import SERVICE_NAME, Settings, get_settings
+
+RECORDS_RATE_LIMIT_PER_MIN = 60
 
 
 def default_checks(settings: Settings) -> dict[str, HealthCheck]:
@@ -69,6 +72,8 @@ def create_app(
         app.state.class_names = bundled_class_names(settings.model_dir)
     if not getattr(app.state, "class_names", None):
         app.state.class_names = []
+    # Per-user limiter for the Records API (> 60/min/user -> 429).
+    app.state.records_limiter = SlidingWindowLimiter(RECORDS_RATE_LIMIT_PER_MIN, window_s=60)
     install_error_handlers(app)
     app.add_middleware(RequestIdMiddleware)
 
@@ -82,5 +87,7 @@ def create_app(
     app.include_router(inference.router)
     app.include_router(models.router)
     app.include_router(media_events.router)
-    # More feature routers (records, dictionary, ...) are added in later phases.
+    app.include_router(records.router)
+    app.include_router(detections.router)
+    # More feature routers (dictionary, integrity, activity) are added in later phases.
     return app

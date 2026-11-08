@@ -37,6 +37,26 @@ def get_mongo(request: Request) -> Database:
     return mongo.get_mongo_db(settings.mongo_url)
 
 
+def get_reader_connection(request: Request):
+    """A read-only (c3_reader) SQLAlchemy Connection for cross-component reads, or None.
+
+    None when DATABASE_READER_URL_C3 is not set; the Records API treats SQL entities as
+    unavailable in that case (c1/c2 reads need the reader role).
+    """
+    try:
+        db.get_engine(db.READER)
+    except RuntimeError:
+        yield None
+        return
+    with db.get_engine(db.READER).connect() as conn:
+        yield conn
+
+
+def get_records_limiter(request: Request):
+    """Per-user sliding-window limiter for the Records API (built once in create_app)."""
+    return request.app.state.records_limiter
+
+
 def build_pipeline(request: Request, mdb: Database):
     """A ClassificationPipeline wired to S3, the Mongo repos, and the HANDOFF_MODE hook.
 
