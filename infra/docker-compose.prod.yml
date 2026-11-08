@@ -7,8 +7,11 @@
 #
 # Differences from local:
 #   - No LocalStack (real S3 / SNS / Secrets Manager via the EC2 IAM role).
-#   - No Postgres container (RDS). If RDS is unavailable, set USE_LOCAL_POSTGRES=1
-#     to keep the postgres service from the base file (03 §8 fallback).
+#   - No Postgres container (RDS). If RDS is unavailable, run with SKIP_RDS=1
+#     (`SKIP_RDS=1 make deploy`): the Makefile then enables the
+#     local-postgres-fallback profile below (03 §8 fallback).
+#   - Profiles: `make deploy` enables gateway (Caddy) and c3, plus c1 once it
+#     exists; a plain `up` without them starts only mongo, c4 and c2.
 #   - Mongo runs as a container on the EC2 host (same mongo-data volume).
 #   - Caddy publishes 80/443 directly (no 8080 remap) and uses SITE_ADDRESS
 #     for automatic HTTPS when a domain is set.
@@ -38,9 +41,13 @@ services:
     environment:
       RUN_MIGRATIONS: "1"
       DEMO_MODE: "1"
-    depends_on: !reset
+    depends_on: !override
       mongo:
         condition: service_healthy
+      # Only when the Postgres container runs (SKIP_RDS=1); ignored with RDS.
+      postgres:
+        condition: service_healthy
+        required: false
 
   c1-iot:
     environment:

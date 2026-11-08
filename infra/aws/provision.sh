@@ -55,6 +55,19 @@ upsert_secret() {
   fi
 }
 
+# Create a secret once and keep it on a re-run (ROTATE_SECRETS=1 replaces it). For keys whose
+# rotation breaks a running stack: a new JWT signing key logs everyone out, a new alert-view
+# HMAC key invalidates every alert link already emailed.
+keep_secret() {
+  local name="$1" value="$2"
+  if aws secretsmanager describe-secret --secret-id "${name}" --region "${REGION}" >/dev/null 2>&1 \
+    && [ -z "${ROTATE_SECRETS:-}" ]; then
+    echo "[provision] secret ${name} exists (keeping)"
+  else
+    upsert_secret "${name}" "${value}"
+  fi
+}
+
 read_secret() {
   aws secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text --region "${REGION}"
 }
@@ -141,8 +154,8 @@ JWT_PEM="${JWT_PEM:-$(openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:20
 HMAC_KEY="$(openssl rand -base64 32)"
 
 upsert_secret "homeai/db/master" "${DB_PASSWORD}"
-upsert_secret "homeai/jwt-signing-key" "${JWT_PEM}"
-upsert_secret "homeai/alert-view-hmac" "${HMAC_KEY}"
+keep_secret "homeai/jwt-signing-key" "${JWT_PEM}"
+keep_secret "homeai/alert-view-hmac" "${HMAC_KEY}"
 for role in c1_app c2_app c2_reader c3_app c3_reader c4_app c4_reader; do
   if aws secretsmanager describe-secret --secret-id "homeai/db/${role}" --region "${REGION}" >/dev/null 2>&1; then
     echo "[provision] secret homeai/db/${role} exists (keeping)"
@@ -150,7 +163,7 @@ for role in c1_app c2_app c2_reader c3_app c3_reader c4_app c4_reader; do
     upsert_secret "homeai/db/${role}" "$(rand_password 32)"
   fi
 done
-for role in c2_reader c4_app; do
+for role in c1_app c2_reader c3_app c4_app; do
   if aws secretsmanager describe-secret --secret-id "homeai/mongo/${role}" --region "${REGION}" >/dev/null 2>&1; then
     echo "[provision] secret homeai/mongo/${role} exists (keeping)"
   else
@@ -242,7 +255,8 @@ if [ -z "${SKIP_RDS:-}" ]; then
   echo "[provision] RDS endpoint: ${RDS_ENDPOINT}:5432"
 else
   echo "[provision] SKIP_RDS=1 — Postgres will run as a container on EC2"
-  RDS_ENDPOINT="localhost:5432"
+  # The compose service name: "localhost" inside a container is the container itself.
+  RDS_ENDPOINT="postgres"
 fi
 
 # ---------------------------------------------------------------------------
@@ -342,12 +356,15 @@ echo
 echo " Next on the EC2 host:"
 echo "   ssh -i <your.pem> ubuntu@${EIP}"
 echo "   # install docker/git/awscli, clone repo, then:"
-echo "   RDS_ENDPOINT=${RDS_ENDPOINT}:5432 TEAM=${TEAM} \\"
-echo "     SITE_ADDRESS=:80 PUBLIC_BASE_URL=http://${EIP} make deploy-env > .env"
 if [ -z "${SKIP_RDS:-}" ]; then
+  echo "   RDS_ENDPOINT=${RDS_ENDPOINT}:5432 TEAM=${TEAM} \\"
+  echo "     SITE_ADDRESS=:80 PUBLIC_BASE_URL=http://${EIP} make deploy-env > .env"
   echo "   # init DB once (password is in Secrets Manager homeai/db/master):"
   echo "   PGPASSWORD=\$(aws secretsmanager get-secret-value --secret-id homeai/db/master --query SecretString --output text) \\"
   echo "     psql -h ${RDS_ENDPOINT} -U ${DB_MASTER_USER} -d ${DB_NAME} -f infra/db/init.sql"
+  echo "   RDS_ENDPOINT=${RDS_ENDPOINT}:5432 make deploy && make seed-c4 && infra/aws/smoke.sh"
+else
+  echo "   SKIP_RDS=1 TEAM=${TEAM} SITE_ADDRESS=:80 PUBLIC_BASE_URL=http://${EIP} make deploy-env > .env"
+  echo "   SKIP_RDS=1 make deploy && make seed-c4 && infra/aws/smoke.sh"
 fi
-echo "   make deploy && make seed-c4 && infra/aws/smoke.sh"
 echo "==========================================================================="

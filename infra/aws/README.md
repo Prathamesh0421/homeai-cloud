@@ -60,29 +60,40 @@ RDS_ENDPOINT=<rds-endpoint>:5432 TEAM=cmpe281 \
   make deploy-env > .env
 ```
 
-`render_env.sh` fetches the RDS master password and account ID from AWS and
-prints a `.env` with `AWS_ENDPOINT_URL` empty (real AWS), `NOTIFIER=sns`,
-`DEMO_MODE=1`.
+`render_env.sh` reads the account ID and the passwords from AWS and prints a `.env` in
+which every service connects as its own role (`c2_app`, `c2_reader`, `c4_app`, never the
+RDS master), Mongo is `mongo:27017` (the compose service), AWS_ENDPOINT_URL is unset (real
+AWS), `NOTIFIER=sns`, `DEMO_MODE=1`. Without RDS: `SKIP_RDS=1 TEAM=… make deploy-env > .env`
+(Postgres is then the `postgres:5432` container).
 
 ## 4. Initialise the database (RDS only)
 
 ```bash
-PGPASSWORD='<db-master-password>' psql -h <rds-endpoint> -U postgres -d homeai \
-  -f infra/db/init.sql
+PGPASSWORD="$(aws secretsmanager get-secret-value --secret-id homeai/db/master \
+  --query SecretString --output text)" \
+  psql -h <rds-endpoint> -U postgres -d homeai -f infra/db/init.sql
 ```
 
-(If `SKIP_RDS=1`, `make deploy` starts the Postgres container which runs
-`init.sql` automatically.)
+`init.sql` works as the RDS master (not a superuser): it makes the master a member of the
+`cX_app` roles before setting their default privileges. With `SKIP_RDS=1` the Postgres
+container runs `init.sql` itself; skip this step.
 
 ## 5. Deploy the stack
 
 ```bash
-make deploy
+RDS_ENDPOINT=<rds-endpoint>:5432 make deploy     # or: SKIP_RDS=1 make deploy
 ```
 
-Runs `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml up -d --build`.
-Caddy publishes 80/443 and obtains a Let's Encrypt cert when `SITE_ADDRESS`
-is a real domain.
+1. Starts the data layer (Mongo; Postgres too with `SKIP_RDS=1`).
+2. Runs `set_passwords.sh`: sets every database role and Mongo user to its Secrets Manager
+   password, the ones `.env` now holds (`init.sql`/`init.js` create them with the dev
+   password). Safe to re-run.
+3. Starts everything with the `gateway` (Caddy) and `c3` profiles, plus `c1` once
+   `services/c1_iot` exists:
+   `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --profile gateway --profile c3 up -d --build`.
+
+Caddy publishes 80/443 and obtains a Let's Encrypt cert when `SITE_ADDRESS` is a real
+domain. `make deploy-down` / `make deploy-logs` use the same profiles.
 
 ## 6. Seed + smoke test
 
@@ -116,3 +127,4 @@ emails** (Sun 8, re-check Tue 10).
 | `ec2-trust-policy.json` | Trust policy allowing EC2 to assume the role. |
 | `s3-lifecycle.json` | S3 lifecycle rules (tenants → IA/Glacier, backups expire). |
 | `render_env.sh` | Prints a production `.env` from the provisioned resources. |
+| `set_passwords.sh` | Sets the database roles and Mongo users to their Secrets Manager passwords (run by `make deploy`). |

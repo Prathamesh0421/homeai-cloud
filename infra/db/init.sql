@@ -31,8 +31,8 @@ CREATE SCHEMA IF NOT EXISTS c3;
 CREATE SCHEMA IF NOT EXISTS c4;
 
 -- ---------------------------------------------------------------------------
--- Roles. LOGIN roles with the dev password. On AWS the password comes from
--- Secrets Manager and this file is edited/parameterised before running.
+-- Roles. LOGIN roles with the dev password. On AWS, infra/aws/set_passwords.sh
+-- then sets each role's password from Secrets Manager (homeai/db/<role>).
 -- ---------------------------------------------------------------------------
 DO $$
 BEGIN
@@ -59,6 +59,22 @@ BEGIN
   END IF;
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'c4_reader') THEN
     CREATE ROLE c4_reader LOGIN PASSWORD 'devpass';
+  END IF;
+END
+$$;
+
+-- ---------------------------------------------------------------------------
+-- RDS: the master user is not a superuser. On PostgreSQL 16 creating a role
+-- gives its creator ADMIN on it but not membership, and both ALTER SCHEMA ...
+-- OWNER TO cX_app and ALTER DEFAULT PRIVILEGES FOR ROLE cX_app below then fail
+-- ("must be able to SET ROLE"). Make a non-superuser caller a member of the
+-- owner roles first, before either. This does not give cX_app any of the
+-- master's privileges, only the reverse. Superusers (local Docker, CI) skip it.
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF NOT (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+    EXECUTE format('GRANT c1_app, c2_app, c3_app, c4_app TO %I', current_user);
   END IF;
 END
 $$;
@@ -107,13 +123,6 @@ GRANT USAGE ON SCHEMA c4 TO c2_reader, c3_reader;
 -- No default privileges are set for those, so a new c1/c4 table is never
 -- readable by them by accident.
 -- ---------------------------------------------------------------------------
-
--- ALTER DEFAULT PRIVILEGES FOR ROLE x requires the current user to be a member
--- of x (or a true superuser). Local Docker postgres is a superuser; AWS RDS
--- master is not. Grant membership so this works on both. Idempotent. This does
--- NOT give cX_app any of the master's privileges — only the reverse (master can
--- act as those roles for bootstrap).
-GRANT c1_app, c2_app, c4_app TO CURRENT_USER;
 
 -- c1 tables readable by c3_reader and c4_reader
 ALTER DEFAULT PRIVILEGES FOR ROLE c1_app IN SCHEMA c1

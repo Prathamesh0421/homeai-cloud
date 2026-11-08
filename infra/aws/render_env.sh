@@ -14,7 +14,7 @@
 #
 # Required env vars (set these before running, or pass as arguments):
 #   RDS_ENDPOINT   — host:port of the RDS instance, e.g. db.xxxxxx.us-west-2.rds.amazonaws.com:5432
-#   MONGO_HOST     — host:port of the Mongo container on EC2 (default localhost:27017)
+#                    (not needed with SKIP_RDS=1: the Postgres container, postgres:5432, is used)
 #   SITE_ADDRESS   — public domain for Caddy TLS, e.g. homeai.duckdns.org
 #   PUBLIC_BASE_URL — https://<SITE_ADDRESS>
 #   S3_BUCKET       — the provisioned bucket name (default homeai-<team>-<accountid>)
@@ -23,19 +23,29 @@
 # Optional:
 #   AWS_REGION      — defaults to us-west-2
 #   DB_NAME         — defaults to homeai
-#   DB_MASTER_USER  — defaults to postgres (the RDS master user; password comes from Secrets Manager)
+#   MONGO_HOST      — defaults to mongo:27017 (the compose service; "localhost" inside a
+#                     container is the container itself)
+#   SKIP_RDS=1      — use the Postgres container instead of RDS (same as provision.sh)
+#
+# Passwords: each service connects as its own role (cX_app / cX_reader), never the RDS
+# master. The passwords are read from Secrets Manager (homeai/db/<role>, homeai/mongo/<user>,
+# homeai/service-clients) and written into .env; `make deploy` runs set_passwords.sh so the
+# database roles and Mongo users actually have them.
 
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-us-west-2}"
 DB_NAME="${DB_NAME:-homeai}"
-DB_MASTER_USER="${DB_MASTER_USER:-postgres}"
-MONGO_HOST="${MONGO_HOST:-localhost:27017}"
+MONGO_HOST="${MONGO_HOST:-mongo:27017}"
 SITE_ADDRESS="${SITE_ADDRESS:-:80}"
 PUBLIC_BASE_URL="${PUBLIC_BASE_URL:-http://localhost:8080}"
 
-if [ -z "${RDS_ENDPOINT:-}" ]; then
-  echo "render_env.sh: RDS_ENDPOINT is required (host:port of the RDS instance)" >&2
+if [ -n "${SKIP_RDS:-}" ]; then
+  DB_HOST="postgres:5432"
+elif [ -n "${RDS_ENDPOINT:-}" ]; then
+  DB_HOST="${RDS_ENDPOINT}"
+else
+  echo "render_env.sh: RDS_ENDPOINT is required (host:port of the RDS instance), or set SKIP_RDS=1" >&2
   exit 1
 fi
 if [ -z "${TEAM:-}" ]; then
@@ -46,11 +56,24 @@ fi
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text --region "${AWS_REGION}")"
 S3_BUCKET="${S3_BUCKET:-homeai-${TEAM}-${ACCOUNT_ID}}"
 
-# Fetch the RDS master password from Secrets Manager so we never inline it.
-# Each component role password is fetched lazily by the service from
-# homeai/db/<role>; here we only need the master to run init.sql once.
-DB_MASTER_SECRET="${DB_MASTER_SECRET:-homeai/db/master}"
-DB_MASTER_PASSWORD="$(aws secretsmanager get-secret-value --secret-id "${DB_MASTER_SECRET}" --query SecretString --output text --region "${AWS_REGION}")"
+secret() {
+  aws secretsmanager get-secret-value --secret-id "$1" --query SecretString --output text \
+    --region "${AWS_REGION}"
+}
+# Percent-encode a password for use inside a connection URL.
+urlenc() {
+  python3 -c 'import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=""))' "$1"
+}
+pg_url() {  # role
+  echo "postgresql+psycopg://$1:$(urlenc "$(secret "homeai/db/$1")")@${DB_HOST}/${DB_NAME}"
+}
+mongo_url() {  # user
+  echo "mongodb://$1:$(urlenc "$(secret "homeai/mongo/$1")")@${MONGO_HOST}/homeai?authSource=homeai"
+}
+client_secret() {  # client id in homeai/service-clients
+  python3 -c 'import json, sys; print(json.loads(sys.argv[1])[sys.argv[2]])' "${CLIENTS_JSON}" "$1"
+}
+CLIENTS_JSON="$(secret homeai/service-clients)"
 
 cat <<EOF
 # HomeAI Cloud — production .env rendered by infra/aws/render_env.sh
@@ -63,9 +86,8 @@ DEMO_MODE=1
 
 # AWS — real services (no LocalStack endpoint). The EC2 instance role provides
 # credentials; AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY are intentionally unset.
+# AWS_ENDPOINT_URL is left unset on AWS (LocalStack only).
 AWS_REGION=${AWS_REGION}
-# AWS_ENDPOINT_URL is empty on AWS (LocalStack only)
-AWS_ENDPOINT_URL=
 S3_BUCKET=${S3_BUCKET}
 
 # Inter-service URLs (compose hostnames inside the EC2 docker network)
@@ -75,27 +97,24 @@ C1_BASE_URL=http://c1-iot:8001
 C2_BASE_URL=http://c2-alerts:8002
 C3_BASE_URL=http://c3-data:8003
 
-# PostgreSQL — RDS. Each service connects as its cX_app role; the password is
-# fetched from Secrets Manager (homeai/db/<role>) by the service at startup.
-# These URLs use the master user only for the one-time init.sql run; the
-# services override DB user/password via their own settings.
-DATABASE_URL_C2=postgresql+psycopg://${DB_MASTER_USER}:${DB_MASTER_PASSWORD}@${RDS_ENDPOINT}/${DB_NAME}
-DATABASE_READER_URL_C2=postgresql+psycopg://c2_reader:\${C2_READER_PASSWORD}@${RDS_ENDPOINT}/${DB_NAME}
-DATABASE_URL_C4=postgresql+psycopg://c4_app:\${C4_APP_PASSWORD}@${RDS_ENDPOINT}/${DB_NAME}
+# PostgreSQL (${DB_HOST}). Each service connects as its own role; migrations run as
+# the owner role cX_app so the reader grants (init.sql default privileges) apply.
+DATABASE_URL_C2=$(pg_url c2_app)
+DATABASE_READER_URL_C2=$(pg_url c2_reader)
+DATABASE_URL_C4=$(pg_url c4_app)
 
 # MongoDB — container on the EC2 host (real Mongo, not DocumentDB)
-MONGO_URL_C2_READER=mongodb://c2_reader:\${C2_READER_PASSWORD}@${MONGO_HOST}/homeai?authSource=homeai
-MONGO_URL_C4=mongodb://c4_app:\${C4_APP_PASSWORD}@${MONGO_HOST}/homeai?authSource=homeai
+MONGO_URL_C2_READER=$(mongo_url c2_reader)
+MONGO_URL_C4=$(mongo_url c4_app)
 
 # C4 JWT signing key (Secrets Manager id; the service fetches the PEM)
 C4_JWT_PRIVATE_KEY_SECRET=homeai/jwt-signing-key
 
-# Service client secrets — fetched from homeai/service-clients by C4 at startup.
-# The names are stable; the values live in Secrets Manager.
-SERVICE_CLIENT_SECRET_C2=\${SERVICE_CLIENT_SECRET_C2}
-SERVICE_CLIENT_SECRET_C3=\${SERVICE_CLIENT_SECRET_C3}
-SERVICE_CLIENT_SECRET_C4=\${SERVICE_CLIENT_SECRET_C4}
-SERVICE_CLIENT_SECRET_DEVICE=\${SERVICE_CLIENT_SECRET_DEVICE}
+# Service client secrets (values from homeai/service-clients)
+SERVICE_CLIENT_SECRET_C2=$(client_secret c2-alerts)
+SERVICE_CLIENT_SECRET_C3=$(client_secret c3-worker)
+SERVICE_CLIENT_SECRET_C4=$(client_secret c4-dashboard)
+SERVICE_CLIENT_SECRET_DEVICE=$(client_secret device-uploader)
 
 # C2 alert-view HMAC (Secrets Manager id)
 C2_ALERT_VIEW_KEY_SECRET=homeai/alert-view-hmac
@@ -105,16 +124,4 @@ NOTIFIER=sns
 
 # C3 model directory (mounted volume on EC2)
 C3_MODEL_DIR=/models
-EOF
-
-# Helper note printed to stderr (not into .env)
-cat >&2 <<EOF
-
-# ---------------------------------------------------------------------------
-# After generating .env, populate the role passwords from Secrets Manager:
-#   C4_APP_PASSWORD=\$(aws secretsmanager get-secret-value --secret-id homeai/db/c4_app --query SecretString --output text)
-#   C2_READER_PASSWORD=\$(aws secretsmanager get-secret-value --secret-id homeai/db/c2_reader --query SecretString --output text)
-#   ...and the service-client secrets from homeai/service-clients
-# Or run each service with its own secret-id env var and let it fetch at startup.
-# ---------------------------------------------------------------------------
 EOF
