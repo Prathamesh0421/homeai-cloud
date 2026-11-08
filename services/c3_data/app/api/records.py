@@ -11,6 +11,7 @@ from homeai_common.pagination import Envelope, Page, PageParams, data_response, 
 from pymongo.database import Database
 
 from app.api.deps import get_mongo, get_reader_connection, get_records_limiter
+from app.schemas.common import UuidStr
 from app.schemas.records import Record
 from app.services.rate_limit import SlidingWindowLimiter
 from app.services.record_query import RecordQuery
@@ -19,6 +20,30 @@ from app.services.record_scope import record_scope
 router = APIRouter(prefix="/api/v1/records", tags=["records"])
 
 RECORD_ROLES = frozenset({"house_owner", "iot_staff", "cloud_staff"})
+
+# SQL-backed entities whose uuid filter values must be validated (a non-uuid would reach a uuid
+# column and 500).
+SQL_UUID_ENTITIES = frozenset({"houses", "rooms", "feeds", "alerts"})
+# Entities whose record id is a UUID (SQL pks + the Mongo collections keyed by a UUID _id). A
+# non-uuid id would 500 on the SQL path; validating it to 422 is also the right contract for the
+# UUID-keyed Mongo entities. activity_patterns is excluded: its _id is "<house>:<room>:<date>".
+UUID_ID_ENTITIES = frozenset({"houses", "rooms", "feeds", "alerts", "detections", "clips"})
+# Filter fields that are uuid columns on a SQL entity.
+UUID_FILTER_FIELDS = frozenset({"room_id", "feed_id"})
+
+
+def _require_uuid(value: str, field: str) -> None:
+    import uuid as _uuid
+
+    try:
+        _uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise ApiError(
+            422,
+            "validation_error",
+            "invalid id",
+            details=[{"field": field, "issue": "must be a UUID"}],
+        ) from exc
 
 
 def records_principal(principal: Principal = Depends(current_principal)) -> Principal:
@@ -61,8 +86,8 @@ def list_records(
     entity: str,
     request: Request,
     params: PageParams = Depends(),
-    house_id: str | None = Query(None),
-    tenant_id: str | None = Query(None, description="Cloud staff / services only"),
+    house_id: UuidStr | None = Query(None),
+    tenant_id: UuidStr | None = Query(None, description="Cloud staff / services only"),
     from_: datetime | None = Query(None, alias="from"),
     to: datetime | None = Query(None),
     filter_: str | None = Query(None, alias="filter"),
@@ -72,6 +97,11 @@ def list_records(
     limiter: SlidingWindowLimiter = Depends(get_records_limiter),
 ) -> dict:
     _rate_limit(principal, limiter)
+    parsed = _parse_filter(filter_)
+    # uuid-typed filter values on SQL entities must be valid UUIDs, else they'd 500 at the DB.
+    if entity in SQL_UUID_ENTITIES:
+        for field in UUID_FILTER_FIELDS & parsed.keys():
+            _require_uuid(parsed[field], field)
     scope = record_scope(principal, tenant_id)
     q = RecordQuery(reader_conn, mongo)
     rows, total = q.list(
@@ -80,7 +110,7 @@ def list_records(
         house_id=house_id,
         from_=from_,
         to=to,
-        filters=_parse_filter(filter_),
+        filters=parsed,
         offset=params.offset,
         limit=params.limit,
         principal_is_iot=principal.is_user and principal.role == "iot_staff",
@@ -99,6 +129,11 @@ def get_record(
     limiter: SlidingWindowLimiter = Depends(get_records_limiter),
 ) -> dict:
     _rate_limit(principal, limiter)
+    # UUID-keyed entities: reject a non-UUID id as 422 up front (SQL would 500; the UUID-keyed
+    # Mongo entities get the same contract). activity_patterns uses a composite string _id, so
+    # it is not constrained here.
+    if entity in UUID_ID_ENTITIES:
+        _require_uuid(record_id, "record_id")
     if entity == "alerts" and principal.is_user and principal.role == "iot_staff":
         raise ApiError(403, "forbidden", "iot staff may not read alerts")
     scope = record_scope(principal, None)

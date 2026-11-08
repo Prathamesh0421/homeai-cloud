@@ -11,6 +11,7 @@ from homeai_common.errors import ApiError
 from pymongo.database import Database
 
 from app.api.deps import get_mongo
+from app.schemas.common import UuidStr
 from app.schemas.records import StatBucket
 from app.services.detection_stats import detection_stats
 from app.services.record_scope import record_scope
@@ -33,8 +34,8 @@ def stats(
     group_by: Literal["top_label", "day", "house"] = Query(...),
     from_: datetime | None = Query(None, alias="from"),
     to: datetime | None = Query(None),
-    house_id: str | None = Query(None),
-    tenant_id: str | None = Query(None, description="Cloud staff / services only"),
+    house_id: UuidStr | None = Query(None),
+    tenant_id: UuidStr | None = Query(None, description="Cloud staff / services only"),
     principal: Principal = Depends(stats_principal),
     mongo: Database = Depends(get_mongo),
 ) -> dict:
