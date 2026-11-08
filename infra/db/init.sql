@@ -108,6 +108,13 @@ GRANT USAGE ON SCHEMA c4 TO c2_reader, c3_reader;
 -- readable by them by accident.
 -- ---------------------------------------------------------------------------
 
+-- ALTER DEFAULT PRIVILEGES FOR ROLE x requires the current user to be a member
+-- of x (or a true superuser). Local Docker postgres is a superuser; AWS RDS
+-- master is not. Grant membership so this works on both. Idempotent. This does
+-- NOT give cX_app any of the master's privileges — only the reverse (master can
+-- act as those roles for bootstrap).
+GRANT c1_app, c2_app, c4_app TO CURRENT_USER;
+
 -- c1 tables readable by c3_reader and c4_reader
 ALTER DEFAULT PRIVILEGES FOR ROLE c1_app IN SCHEMA c1
   GRANT SELECT ON TABLES TO c3_reader, c4_reader;

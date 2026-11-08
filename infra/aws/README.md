@@ -30,8 +30,12 @@ This creates:
   `infra/aws/ec2-policy.json` (S3, SNS incl. Unsubscribe/GetSubscriptionAttributes/ListTopics,
   Secrets Manager `homeai/*`).
 - **RDS** PostgreSQL 16 `db.t4g.micro` (or skip with `SKIP_RDS=1` to use the
-  Postgres container fallback — `07` §3).
-- **EC2** Ubuntu 22.04 `t3.large` + Elastic IP, with the IAM role attached.
+  Postgres container fallback — `07` §3). Free-tier accounts get
+  `--backup-retention-period 1` (override with `DB_BACKUP_DAYS=7` if you leave free tier).
+- **EC2** Ubuntu 22.04 + Elastic IP, with the IAM role attached. Default size is
+  **`t3.micro`** (Free Tier). For the demo with C3/TensorFlow use
+  `EC2_TYPE=t3.medium` or `t3.large` (paid). RDS defaults to `db.t3.micro` +
+  `gp2` + 1-day backups for Free Tier.
 - **Budget alarm** at $25/month.
 
 Printed at the end: the EC2 public IP and RDS endpoint.
