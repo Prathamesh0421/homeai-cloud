@@ -1,0 +1,87 @@
+# HomeAI Cloud — production overlay for the EC2 host.
+# Owner: Mohit (C4-16). Source of truth: docs/03_REPO_AND_INFRA.md sections 4 & 8.
+#
+# Applied on top of the base compose:
+#
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml up -d --build
+#
+# Differences from local:
+#   - No LocalStack (real S3 / SNS / Secrets Manager via the EC2 IAM role).
+#   - No Postgres container (RDS). If RDS is unavailable, set USE_LOCAL_POSTGRES=1
+#     to keep the postgres service from the base file (03 §8 fallback).
+#   - Mongo runs as a container on the EC2 host (same mongo-data volume).
+#   - Caddy publishes 80/443 directly (no 8080 remap) and uses SITE_ADDRESS
+#     for automatic HTTPS when a domain is set.
+#   - App services no longer depend on postgres/localstack; they depend on
+#     c4-dashboard for JWKS only.
+
+name: homeai
+
+services:
+  # Drop LocalStack on AWS. (No-op here; the base file's localstack service is
+  # removed by overriding its profile to a name that is never selected.)
+  localstack:
+    profiles: ["never-prod"]
+
+  # Keep Postgres only when the RDS fallback is requested.
+  postgres:
+    profiles: ["local-postgres-fallback"]
+
+  # Mongo stays on the EC2 host (real Mongo, not DocumentDB). No host port
+  # published — only the docker network needs it.
+  mongo:
+    ports: !override []
+    volumes:
+      - mongo-data:/data/db
+
+  c4-dashboard:
+    environment:
+      RUN_MIGRATIONS: "1"
+      DEMO_MODE: "1"
+    depends_on: !reset
+      mongo:
+        condition: service_healthy
+
+  c1-iot:
+    environment:
+      RUN_MIGRATIONS: "1"
+      DEMO_MODE: "1"
+    depends_on:
+      c4-dashboard:
+        condition: service_healthy
+
+  c2-alerts:
+    environment:
+      RUN_MIGRATIONS: "1"
+      NOTIFIER: sns
+      DEMO_MODE: "1"
+    depends_on:
+      c4-dashboard:
+        condition: service_healthy
+
+  c3-data:
+    environment:
+      RUN_MIGRATIONS: "1"
+      HANDOFF_MODE: call
+      DEMO_MODE: "1"
+    depends_on:
+      c4-dashboard:
+        condition: service_healthy
+
+  c3-worker:
+    environment:
+      HANDOFF_MODE: call
+      DEMO_MODE: "1"
+
+  caddy:
+    ports: !override
+      - "80:80"
+      - "443:443"
+    depends_on:
+      c4-dashboard:
+        condition: service_healthy
+      c2-alerts:
+        condition: service_healthy
+
+volumes:
+  mongo-data:

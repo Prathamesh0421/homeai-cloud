@@ -87,10 +87,17 @@ def db_engine():
     with engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS citext"))
         conn.execute(text("CREATE SCHEMA IF NOT EXISTS c4"))
+        # Drop the users_public view (created by migrations) before
+        # BASE_METADATA.drop_all, since the view depends on c4.users and is
+        # not part of BASE_METADATA.
+        conn.execute(text("DROP VIEW IF EXISTS c4.users_public"))
         conn.commit()
     BASE_METADATA.drop_all(engine, checkfirst=True)
     BASE_METADATA.create_all(engine, checkfirst=False)
     yield engine
+    with engine.connect() as conn:
+        conn.execute(text("DROP VIEW IF EXISTS c4.users_public"))
+        conn.commit()
     BASE_METADATA.drop_all(engine, checkfirst=True)
     engine.dispose()
 

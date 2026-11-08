@@ -44,7 +44,7 @@ class ServiceTokenResponse(BaseModel):
 
 class UserPublic(BaseModel):
     user_id: str
-    tenant_id: str
+    tenant_id: str | None = None
     email: str
     role: str
     display_name: str | None = None

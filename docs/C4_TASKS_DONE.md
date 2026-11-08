@@ -10,6 +10,20 @@ anything you can call from C1/C2/C3. Older passes stay for history.
 
 ## Passes
 
+### C4-16 — 7 Nov 2026 (AWS setup artifacts)
+
+| ID | What landed |
+|---|---|
+| C4-16 | AWS provisioning + deploy artifacts under `infra/aws/`: `provision.sh` (S3, RDS, Secrets Manager, IAM role, EC2 + EIP, $25 budget), `ec2-policy.json` (least-privilege IAM — S3, SNS incl. Unsubscribe/GetSubscriptionAttributes/ListTopics per `07` §5, Secrets Manager `homeai/*`), `ec2-trust-policy.json`, `s3-lifecycle.json`, `render_env.sh` (prints prod `.env` from provisioned resources), `smoke.sh` (post-deploy checks), `README.md` runbook. `infra/docker-compose.prod.yml` overlay (no LocalStack/Postgres, Mongo on host, Caddy 80/443, `NOTIFIER=sns`, `HANDOFF_MODE=call`). `make deploy` / `deploy-env` / `deploy-down` / `deploy-logs` targets. |
+
+**Teammate notes**
+- Run `infra/aws/provision.sh` once (admin machine, not EC2) with `TEAM=… KEY_NAME=…`. Prints the EC2 EIP + RDS endpoint.
+- On EC2: `make deploy-env > .env` (with `RDS_ENDPOINT` + `SITE_ADDRESS`), then `make deploy`, then `make seed-c4` against RDS.
+- `infra/aws/smoke.sh` checks health, login, JWKS, `/auth/me`, and SNS IAM role.
+- Fixes found while smoke-testing: `UserPublic.tenant_id` is now `str | None` (cloud_staff have no tenant); `conftest` drops the `c4.users_public` view before `BASE_METADATA.drop_all`.
+- `SKIP_RDS=1` keeps Postgres as a container on EC2 if RDS is slow (`07` §3 fallback).
+- Tests: 54 C4 (no new tests; smoke is a script). `ruff` clean.
+
 ### Week 2 — 5 Nov 2026 (settings, tenants, seed, UI kit)
 
 | ID | What landed |
@@ -42,5 +56,6 @@ anything you can call from C1/C2/C3. Older passes stay for history.
 
 ## Still open (later weeks)
 
-C4-08/09 dashboards + rollup · C4-12–14 feature pages · C4-16 AWS · C4-17 Playwright.
+C4-08/09 dashboards + rollup · C4-12–14 feature pages · C4-17 Playwright.
 Master `scripts/seed.py` stays with its Phase 0 owner; until then use `make seed-c4`.
+C4-16 artifacts are in `infra/aws/`; the team runs `provision.sh` on Sun 8 Nov.

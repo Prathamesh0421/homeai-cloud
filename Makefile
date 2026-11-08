@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -73,3 +73,25 @@ seed-c4:
 # In the stack: docker compose -f infra/docker-compose.yml exec c2-alerts python -m app.seed
 seed-c2:
 	cd services/c2_alerts && alembic upgrade head && $(PYTHON) -m app.seed
+
+# --- AWS / EC2 deploy (C4-16) ---------------------------------------------
+# Render a production .env from the provisioned AWS resources. Run on the EC2
+# host (or anywhere with an instance profile) and redirect to .env:
+#   RDS_ENDPOINT=db.xxxx.rds.amazonaws.com:5432 TEAM=cmpe281 SITE_ADDRESS=homeai.duckdns.org \
+#     make deploy-env > .env
+COMPOSE_PROD ?= docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml
+deploy-env:
+	@infra/aws/render_env.sh
+
+# Build and start the full stack on the EC2 host with the prod overlay.
+# Real S3/SNS/Secrets Manager come from the EC2 IAM role; no LocalStack.
+deploy:
+	$(COMPOSE_PROD) up -d --build
+
+# Stop the prod stack (containers remain). Use `down -v` to also drop volumes.
+deploy-down:
+	$(COMPOSE_PROD) down
+
+# Tail logs for the prod stack.
+deploy-logs:
+	$(COMPOSE_PROD) logs -f --tail=100
