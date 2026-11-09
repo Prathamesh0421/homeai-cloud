@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -116,3 +116,24 @@ deploy-down:
 # Tail logs for the prod stack.
 deploy-logs:
 	$(COMPOSE_PROD) $(PROD_PROFILES) logs -f --tail=100
+
+# --- C2 demo helpers (C2 plan §10.1) --------------------------------------------------------
+# For the EC2 host: the host has no Python and Mongo is not published, so the scripts run in the
+# c2-alerts / c4-dashboard images on the compose network, with the repo mounted read-only and
+# the host's .env. Locally: COMPOSE_PROD="docker compose -f infra/docker-compose.yml".
+#   make demo-c2-detect ARGS="--label glass_break --conf 0.78"   (then ARGS="--resend <id>")
+#   make demo-c2-expired-link                                     (newest alert)
+#   make demo-c2-quiet-hours ARGS=--cover-now                     (or --set 22:00-07:00, --off, --show)
+#   make demo-c2-reset ARGS=--yes                                 (alerts only; rules/SNS kept)
+C2_DEMO_RUN = $(COMPOSE_PROD) run --rm --no-deps -T -v $(CURDIR):/workspace:ro -w /workspace
+demo-c2-detect:
+	$(C2_DEMO_RUN) -e HOMEAI_API_URL=http://caddy:80 c2-alerts python scripts/demo/c2_fake_detection.py $(ARGS)
+
+demo-c2-expired-link:
+	$(C2_DEMO_RUN) c2-alerts python scripts/demo/c2_expired_link.py $(ARGS)
+
+demo-c2-quiet-hours:
+	$(C2_DEMO_RUN) -e PYTHONPATH=/app c4-dashboard python scripts/demo/c2_quiet_hours.py $(ARGS)
+
+demo-c2-reset:
+	$(COMPOSE_PROD) exec -T c2-alerts python -m app.demo_reset $(ARGS)

@@ -49,6 +49,7 @@ def load(name: str, path: Path):
 seed_ids = load("seed_ids", SCRIPTS / "seed_ids.py")
 fake_detection = load("c2_fake_detection", SCRIPTS / "demo" / "c2_fake_detection.py")
 expired_link = load("c2_expired_link", SCRIPTS / "demo" / "c2_expired_link.py")
+quiet_hours = load("c2_quiet_hours", SCRIPTS / "demo" / "c2_quiet_hours.py")
 
 
 # --- seed IDs -------------------------------------------------------------------------------
@@ -395,3 +396,121 @@ def test_seed_main(session, monkeypatch, capsys):
 def test_seed_never_needs_houses():
     with pytest.raises(RuntimeError, match="does not look up houses"):
         c2_seed._NoHouseLookups().house("x")
+
+
+# --- demo reset (app/demo_reset.py) ---------------------------------------------------------
+
+
+def _alert_with_activity(session, rule, house_id: str):
+    from app.models.orm import AlertStatusHistory, Notification
+
+    alert = make_alert(session, rule, house_id=house_id)
+    session.add_all(
+        [
+            AlertStatusHistory(
+                alert_id=alert.alert_id, to_status="open", actor_id="system", actor_role="system"
+            ),
+            Notification(alert_id=alert.alert_id, channel="in_app", status="sent"),
+            Notification(
+                alert_id=alert.alert_id,
+                contact_id=seed_ids.MAPLE_CONTACTS[0],
+                channel="email",
+                priority=1,
+                status="sent",
+            ),
+        ]
+    )
+    session.flush()
+    return alert
+
+
+def _count(session, model) -> int:
+    return session.scalar(select(func.count()).select_from(model))
+
+
+def test_demo_reset_clears_alerts_and_keeps_rules(session):
+    from app.demo_reset import reset_alerts
+    from app.models.orm import Alert, AlertStatusHistory, Notification
+
+    rule = make_rule(session, "intrusion")
+    _alert_with_activity(session, rule, MAPLE.house_id)
+    _alert_with_activity(session, rule, OAK.house_id)
+    rules = _count(session, AlertRule)
+    assert reset_alerts(session) == {"notifications": 4, "history": 2, "alerts": 2}
+    assert [_count(session, m) for m in (Alert, AlertStatusHistory, Notification)] == [0, 0, 0]
+    assert _count(session, AlertRule) == rules
+
+
+def test_demo_reset_one_house(session):
+    from app.demo_reset import reset_alerts
+    from app.models.orm import Alert, Notification
+
+    rule = make_rule(session, "intrusion")
+    _alert_with_activity(session, rule, MAPLE.house_id)
+    oak = _alert_with_activity(session, rule, OAK.house_id)
+    assert reset_alerts(session, MAPLE.house_id) == {"notifications": 2, "history": 1, "alerts": 1}
+    assert session.scalars(select(Alert.alert_id)).all() == [oak.alert_id]
+    assert _count(session, Notification) == 2
+
+
+def test_demo_reset_main(session, settings, monkeypatch, capsys):
+    from app import demo_reset
+    from app.models.orm import Alert
+    from homeai_common import db
+
+    @contextmanager
+    def scope():
+        yield session
+
+    monkeypatch.setattr(db, "configure_db", lambda url: None)
+    monkeypatch.setattr(db, "session_scope", scope)
+    monkeypatch.setattr(db, "dispose_db", lambda: None)
+    _alert_with_activity(session, make_rule(session, "intrusion"), MAPLE.house_id)
+
+    monkeypatch.setattr(
+        demo_reset, "get_settings", lambda: settings.model_copy(update={"demo_mode": False})
+    )
+    assert demo_reset.main(["--yes"]) == 2
+    assert "DEMO_MODE is off" in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        demo_reset, "get_settings", lambda: settings.model_copy(update={"demo_mode": True})
+    )
+    assert demo_reset.main([]) == 0  # without --yes: only counts
+    assert "1 alert(s); run again with --yes" in capsys.readouterr().out
+    assert _count(session, Alert) == 1
+    assert demo_reset.main(["--yes"]) == 0
+    assert "deleted 1 alert(s), 1 history row(s), 2 notification(s); rules kept" in (
+        capsys.readouterr().out
+    )
+    assert _count(session, Alert) == 0
+
+
+# --- quiet hours (scripts/demo/c2_quiet_hours.py; the C4 write itself runs in C4's image) -----
+
+
+def test_quiet_window_covers_now_in_house_time():
+    # 19:07 UTC on 25 Oct is 12:07 in Los Angeles (PDT): quiet from 11:50 for 2 h.
+    now = datetime(2026, 10, 25, 19, 7, tzinfo=UTC)
+    assert quiet_hours.window_covering(now, "America/Los_Angeles", 2) == ("11:50", "13:50")
+    assert quiet_hours.window_covering(now, "America/New_York", 1.5) == ("14:50", "16:20")
+    late = datetime(2026, 10, 26, 6, 30, tzinfo=UTC)  # 23:30 in LA: the window wraps midnight
+    assert quiet_hours.window_covering(late, "America/Los_Angeles", 2) == ("23:15", "01:15")
+    with pytest.raises(ValueError, match="between 0 and 24"):
+        quiet_hours.window_covering(now, "America/Los_Angeles", 24)
+
+
+def test_quiet_window_parse_and_house_timezone():
+    assert quiet_hours.parse_window("22:00-07:00") == ("22:00", "07:00")
+    with pytest.raises(ValueError, match="HH:MM-HH:MM"):
+        quiet_hours.parse_window("10pm-7am")
+    assert quiet_hours.house_timezone(seed_ids.house_id("maple")) == "America/Los_Angeles"
+    assert quiet_hours.house_timezone(seed_ids.house_id("pine")) == "America/New_York"
+
+
+def test_quiet_hours_bad_arguments_stop_before_c4(capsys):
+    for argv in (["--set", "late"], ["--cover-now", "--hours", "30"], ["--show", "--house", "elm"]):
+        with pytest.raises(SystemExit) as exc:
+            quiet_hours.main(argv)
+        assert exc.value.code == 2
+    assert "HH:MM-HH:MM" in capsys.readouterr().err
