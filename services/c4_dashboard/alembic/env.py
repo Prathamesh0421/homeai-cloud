@@ -19,7 +19,8 @@ def _database_url() -> str:
     return os.environ.get("DATABASE_URL_C4") or config.get_main_option("sqlalchemy.url")
 
 
-config.set_main_option("sqlalchemy.url", _database_url())
+# ConfigParser treats % as interpolation; URL-encoded passwords use %2F etc.
+config.set_main_option("sqlalchemy.url", _database_url().replace("%", "%%"))
 
 target_metadata = BASE_METADATA
 

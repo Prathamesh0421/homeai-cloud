@@ -21,7 +21,8 @@ if config.config_file_name is not None and _given_connection is None:
 # DATABASE_URL_C2 / C2_DATABASE_URL win over alembic.ini.
 _url = Settings().database_url or config.get_main_option("sqlalchemy.url")
 if _given_connection is None:
-    config.set_main_option("sqlalchemy.url", _url)
+    # ConfigParser treats % as interpolation; URL-encoded passwords use %2F etc.
+    config.set_main_option("sqlalchemy.url", _url.replace("%", "%%"))
 
 target_metadata = Base.metadata
 
