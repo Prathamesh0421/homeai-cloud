@@ -12,22 +12,32 @@ export interface ButtonProps {
   type?: "button" | "submit" | "reset";
   variant?: "primary" | "secondary" | "danger" | "ghost";
   disabled?: boolean;
+  className?: string;
 }
 
 const VARIANTS: Record<NonNullable<ButtonProps["variant"]>, string> = {
-  primary: "bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50",
-  secondary: "border border-slate-300 text-slate-700 hover:bg-slate-50 disabled:opacity-50",
-  danger: "bg-red-600 text-white hover:bg-red-500 disabled:opacity-50",
-  ghost: "text-slate-600 hover:bg-slate-100 disabled:opacity-50",
+  primary:
+    "bg-primary text-white hover:bg-primary-hover shadow-card disabled:opacity-50",
+  secondary:
+    "border border-border-strong bg-surface text-ink hover:bg-surface-2 disabled:opacity-50",
+  danger: "bg-danger text-white hover:bg-danger/90 disabled:opacity-50",
+  ghost: "text-muted hover:bg-surface-2 disabled:opacity-50",
 };
 
-export function Button({ children, onClick, type = "button", variant = "primary", disabled }: ButtonProps) {
+export function Button({
+  children,
+  onClick,
+  type = "button",
+  variant = "primary",
+  disabled,
+  className,
+}: ButtonProps) {
   return (
     <button
       type={type}
       onClick={onClick}
       disabled={disabled}
-      className={`rounded px-3 py-1.5 text-sm font-medium ${VARIANTS[variant]}`}
+      className={`rounded-md px-3.5 py-2 text-sm font-medium transition-colors ${VARIANTS[variant]} ${className ?? ""}`}
     >
       {children}
     </button>

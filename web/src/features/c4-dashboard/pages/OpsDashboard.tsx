@@ -1,8 +1,9 @@
-/** System Dashboard (C4-13): cloud_staff KPIs + charts. */
+/** System Dashboard (C4-13): cloud_staff KPIs + charts + 24h severity timeline. */
 
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
+import { RefreshCw } from "lucide-react";
 import {
   fetchDashboardSummary,
   fetchTenants,
@@ -12,23 +13,94 @@ import { ApiError } from "../../../api/http";
 import {
   ChartCard,
   ErrorState,
-  FilterBar,
   KpiTile,
   SeverityBadge,
+  SEVERITY_HEX,
+  type Severity,
 } from "../../../shared";
+import { Button } from "@/components/ui/button";
 import { SEED_HOUSES } from "../houseOptions";
 
 const POLL_MS = 15_000;
+const selectCls =
+  "rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm text-ink";
+
+const RANGE_PRESETS: { value: DashboardRange; label: string }[] = [
+  { value: "24h", label: "24h" },
+  { value: "7d", label: "7d" },
+  { value: "30d", label: "30d" },
+];
+
+const SOURCE_NAME: Record<string, string> = {
+  c1: "Device manager",
+  c2: "Alert service",
+  c3: "Data service",
+};
+
+function sourceNames(codes: string[]): string {
+  return codes.map((c) => SOURCE_NAME[c] ?? c.toUpperCase()).join(", ");
+}
 
 function BarRow({ label, value, max }: { label: string; value: number; max: number }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="w-24 truncate text-slate-600">{label}</span>
-      <div className="h-2 flex-1 rounded bg-slate-100">
-        <div className="h-2 rounded bg-slate-700" style={{ width: `${pct}%` }} />
+      <span className="w-24 truncate text-muted">{label}</span>
+      <div className="h-2 flex-1 rounded-full bg-surface-2">
+        <div className="h-2 rounded-full bg-accent" style={{ width: `${pct}%` }} />
       </div>
-      <span className="w-8 text-right text-slate-500">{value}</span>
+      <span className="tnum w-8 text-right text-muted">{value}</span>
+    </div>
+  );
+}
+
+/** 24h detection timeline: one row per house, ticks colored by severity. */
+function SeverityTimeline({ alerts }: { alerts: { alert_id: string; house_name: string | null; severity: string; triggered_at: string | null }[] }) {
+  const byHouse = useMemo(() => {
+    const map = new Map<string, { house: string; ticks: { id: string; sev: Severity; at: number }[] }>();
+    for (const a of alerts) {
+      if (!a.triggered_at) continue;
+      const house = a.house_name ?? "Unknown house";
+      if (!map.has(house)) map.set(house, { house, ticks: [] });
+      const t = new Date(a.triggered_at).getTime();
+      map.get(house)!.ticks.push({ id: a.alert_id, sev: a.severity as Severity, at: t });
+    }
+    return [...map.values()];
+  }, [alerts]);
+
+  if (byHouse.length === 0) {
+    return <p className="text-sm text-muted">No alerts in range.</p>;
+  }
+
+  const now = Date.now();
+  const spanMs = 24 * 60 * 60 * 1000;
+  const start = now - spanMs;
+
+  return (
+    <div className="space-y-2.5">
+      {byHouse.map((row) => (
+        <div key={row.house}>
+          <div className="mb-1 text-xs font-medium text-muted">{row.house}</div>
+          <div className="relative h-7 rounded-md bg-surface-2">
+            {row.ticks.map((t) => {
+              const left = Math.max(0, Math.min(100, ((t.at - start) / spanMs) * 100));
+              return (
+                <span
+                  key={t.id}
+                  title={new Date(t.at).toLocaleString()}
+                  className="absolute top-1 h-5 w-1 rounded-full"
+                  style={{ left: `${left}%`, backgroundColor: SEVERITY_HEX[t.sev] }}
+                />
+              );
+            })}
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center gap-3 pt-1 text-[11px] text-muted">
+        <span>-24h</span>
+        <span className="flex-1" />
+        <span>now</span>
+      </div>
     </div>
   );
 }
@@ -69,34 +141,33 @@ export default function OpsDashboard() {
   const sev = data?.alerts_by_severity;
   const sevMax = Math.max(sev?.critical ?? 0, sev?.high ?? 0, sev?.medium ?? 0, sev?.low ?? 0, 1);
   const dayMax = Math.max(...(data?.alerts_by_day.map((d) => d.count) ?? [0]), 1);
+  const c1Down = unavailable.includes("c1");
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold text-slate-900">System Dashboard</h1>
-        <p className="mt-1 text-sm text-slate-500">
-          Live summary across tenants. C1 feeds unavailable until C1 ships; C4-09 rollup deferred.
-        </p>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">System dashboard</h1>
+        <p className="mt-1 text-sm text-muted">Live activity across all tenants and houses.</p>
       </div>
 
-      <FilterBar
-        onReset={() => {
-          setRange("24h");
-          setTenantId("");
-          setHouseId("");
-        }}
-      >
+      {/* Filters: range presets + tenant/house selects */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex rounded-md border border-border-strong p-0.5">
+          {RANGE_PRESETS.map((p) => (
+            <button
+              key={p.value}
+              type="button"
+              onClick={() => setRange(p.value)}
+              className={`rounded px-3 py-1.5 text-sm transition-colors ${
+                range === p.value ? "bg-primary text-white" : "text-muted hover:text-ink"
+              }`}
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
         <select
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-sm"
-          value={range}
-          onChange={(e) => setRange(e.target.value as DashboardRange)}
-        >
-          <option value="24h">24h</option>
-          <option value="7d">7d</option>
-          <option value="30d">30d</option>
-        </select>
-        <select
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+          className={selectCls}
           value={tenantId}
           onChange={(e) => {
             setTenantId(e.target.value);
@@ -111,7 +182,7 @@ export default function OpsDashboard() {
           ))}
         </select>
         <select
-          className="rounded border border-slate-300 bg-white px-2 py-1 text-sm"
+          className={selectCls}
           value={houseId}
           onChange={(e) => setHouseId(e.target.value)}
         >
@@ -122,28 +193,47 @@ export default function OpsDashboard() {
             </option>
           ))}
         </select>
-      </FilterBar>
+      </div>
 
       {unavailable.length > 0 && (
-        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Unavailable: {unavailable.join(", ")}
+        <div className="flex items-start justify-between gap-3 rounded-md border border-warning/30 bg-warning-soft px-3 py-2.5 text-sm text-warning">
+          <span>
+            {sourceNames(unavailable)} is unreachable.{" "}
+            {c1Down ? "House and feed counts may be incomplete." : "Some counts may be incomplete."}
+          </span>
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={() => summaryQ.refetch()}
+            disabled={summaryQ.isFetching}
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${summaryQ.isFetching ? "animate-spin" : ""}`} />
+            Retry
+          </Button>
         </div>
       )}
 
       {summaryQ.isError && (
-        <ErrorState message={`Could not load summary: ${summaryQ.error instanceof ApiError ? summaryQ.error.message : "Error"}`} onRetry={() => summaryQ.refetch()} />
+        <ErrorState
+          message={`Could not load summary: ${summaryQ.error instanceof ApiError ? summaryQ.error.message : "Error"}`}
+          onRetry={() => summaryQ.refetch()}
+        />
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiTile label="Houses" value={data?.kpis.houses ?? "—"} />
+        <KpiTile label="Houses" value={c1Down ? "Unavailable" : (data?.kpis.houses ?? "—")} />
         <KpiTile
           label="Feeds online"
-          value={data ? `${data.kpis.feeds_online}/${data.kpis.feeds_total}` : "—"}
-          hint={unavailable.includes("c1") ? "C1 unavailable" : undefined}
+          value={c1Down ? "Unavailable" : (data ? `${data.kpis.feeds_online}/${data.kpis.feeds_total}` : "—")}
         />
         <KpiTile label="Alerts" value={data?.kpis.alerts ?? "—"} />
         <KpiTile label="Clips classified" value={data?.kpis.clips_classified ?? "—"} />
       </div>
+
+      {/* Lead with the 24h severity timeline — the memorable element for an audio-detection product. */}
+      <ChartCard title="24h detection timeline" subtitle="alerts by house, colored by severity">
+        <SeverityTimeline alerts={data?.recent_alerts ?? []} />
+      </ChartCard>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartCard title="Alerts by severity">
@@ -155,12 +245,12 @@ export default function OpsDashboard() {
               <BarRow label="low" value={sev.low} max={sevMax} />
             </div>
           ) : (
-            <p className="text-sm text-slate-400">No data</p>
+            <p className="text-sm text-muted">No data</p>
           )}
         </ChartCard>
         <ChartCard title="Alerts by day">
           {(data?.alerts_by_day?.length ?? 0) === 0 ? (
-            <p className="text-sm text-slate-400">No daily buckets</p>
+            <p className="text-sm text-muted">No daily buckets</p>
           ) : (
             <div className="space-y-2">
               {data!.alerts_by_day.map((d) => (
@@ -171,7 +261,7 @@ export default function OpsDashboard() {
         </ChartCard>
         <ChartCard title="Top detections" subtitle="by label">
           {(data?.detections_top?.length ?? 0) === 0 ? (
-            <p className="text-sm text-slate-400">No detections</p>
+            <p className="text-sm text-muted">No detections</p>
           ) : (
             <div className="space-y-2">
               {data!.detections_top.map((d) => (
@@ -186,17 +276,17 @@ export default function OpsDashboard() {
           )}
         </ChartCard>
         <ChartCard title="Recent alerts">
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-border/60">
             {(data?.recent_alerts ?? []).length === 0 && (
-              <li className="py-4 text-center text-sm text-slate-400">None</li>
+              <li className="py-4 text-center text-sm text-muted">None</li>
             )}
             {(data?.recent_alerts ?? []).map((a) => (
-              <li key={a.alert_id} className="flex items-center gap-2 py-2 text-sm">
+              <li key={a.alert_id} className="flex items-center gap-2 py-2.5 text-sm">
                 <SeverityBadge severity={a.severity as "critical" | "high" | "medium" | "low"} />
-                <Link to={`/alerts/${a.alert_id}`} className="hover:underline">
+                <Link to={`/alerts/${a.alert_id}`} className="font-medium text-ink hover:underline">
                   {a.alert_type_code}
                 </Link>
-                <span className="ml-auto text-xs text-slate-400">{a.house_name}</span>
+                <span className="ml-auto text-xs text-muted">{a.house_name}</span>
               </li>
             ))}
           </ul>

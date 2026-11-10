@@ -16,15 +16,20 @@ import { houseOptionsFor } from "../houseOptions";
 
 const POLL_MS = 15_000;
 
+const selectCls =
+  "rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm text-ink";
+const linkCls =
+  "rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm text-ink hover:bg-surface-2";
+
 function BarRow({ label, value, max }: { label: string; value: number; max: number }) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   return (
     <div className="flex items-center gap-2 text-sm">
-      <span className="w-20 truncate text-slate-600">{label}</span>
-      <div className="h-2 flex-1 rounded bg-slate-100">
-        <div className="h-2 rounded bg-slate-700" style={{ width: `${pct}%` }} />
+      <span className="w-20 truncate text-muted">{label}</span>
+      <div className="h-2 flex-1 rounded-full bg-surface-2">
+        <div className="h-2 rounded-full bg-accent" style={{ width: `${pct}%` }} />
       </div>
-      <span className="w-8 text-right text-slate-500">{value}</span>
+      <span className="w-8 text-right text-muted">{value}</span>
     </div>
   );
 }
@@ -60,17 +65,11 @@ export default function HomeOverview() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold text-slate-900">Home Overview</h1>
-          <p className="mt-1 text-sm text-slate-500">
-            Welcome, {session?.email}. Live from C2/C3; C1 feeds show unavailable until C1 ships.
-          </p>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">Home Overview</h1>
+          <p className="mt-1 text-sm text-muted">Welcome back, {session?.email}.</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <select
-            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
-            value={houseId}
-            onChange={(e) => setHouseId(e.target.value)}
-          >
+          <select className={selectCls} value={houseId} onChange={(e) => setHouseId(e.target.value)}>
             {houses.map((h) => (
               <option key={h.house_id} value={h.house_id}>
                 {h.name}
@@ -78,7 +77,7 @@ export default function HomeOverview() {
             ))}
           </select>
           <select
-            className="rounded border border-slate-300 bg-white px-2 py-1.5 text-sm"
+            className={selectCls}
             value={range}
             onChange={(e) => setRange(e.target.value as DashboardRange)}
           >
@@ -86,35 +85,35 @@ export default function HomeOverview() {
             <option value="7d">7d</option>
             <option value="30d">30d</option>
           </select>
-          <Link to="/home/settings" className="rounded border border-slate-300 px-2 py-1.5 text-sm hover:bg-slate-50">
+          <Link to="/home/settings" className={linkCls}>
             Settings
           </Link>
-          <Link to="/alerts" className="rounded border border-slate-300 px-2 py-1.5 text-sm hover:bg-slate-50">
+          <Link to="/alerts" className={linkCls}>
             Alerts
           </Link>
         </div>
       </div>
 
       {unavailable.length > 0 && (
-        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-          Unavailable sources: {unavailable.join(", ")}
+        <div className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-xs text-warning">
+          {unavailable.includes("c1")
+            ? "Device manager is unreachable. House and feed counts may be incomplete."
+            : "Some sources are temporarily unavailable. Counts may be incomplete."}
         </div>
       )}
 
       {summaryQ.isError && (
-        <ErrorState message={`Could not load summary: ${summaryQ.error instanceof ApiError ? summaryQ.error.message : "Error"}`} onRetry={() => summaryQ.refetch()} />
+        <ErrorState
+          message={`Could not load summary: ${summaryQ.error instanceof ApiError ? summaryQ.error.message : "Error"}`}
+          onRetry={() => summaryQ.refetch()}
+        />
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <KpiTile label="Open alerts" value={data?.kpis.open_alerts ?? "—"} />
         <KpiTile
           label="Feeds online"
-          value={
-            data
-              ? `${data.kpis.feeds_online}/${data.kpis.feeds_total}`
-              : "—"
-          }
-          hint={unavailable.includes("c1") ? "C1 unavailable" : undefined}
+          value={unavailable.includes("c1") ? "Unavailable" : (data ? `${data.kpis.feeds_online}/${data.kpis.feeds_total}` : "—")}
         />
         <KpiTile label="Alerts in range" value={data?.kpis.alerts ?? "—"} />
         <KpiTile label="Clips classified" value={data?.kpis.clips_classified ?? "—"} />
@@ -130,13 +129,13 @@ export default function HomeOverview() {
               <BarRow label="low" value={sev.low} max={sevMax} />
             </div>
           ) : (
-            <p className="text-sm text-slate-400">No data</p>
+            <p className="text-sm text-muted">No data</p>
           )}
         </ChartCard>
 
         <ChartCard title="Top detections">
           {(data?.detections_top?.length ?? 0) === 0 ? (
-            <p className="text-sm text-slate-400">No detections in range</p>
+            <p className="text-sm text-muted">No detections in range</p>
           ) : (
             <div className="space-y-2">
               {data!.detections_top.map((d) => (
@@ -152,22 +151,22 @@ export default function HomeOverview() {
         </ChartCard>
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white">
-        <div className="border-b border-slate-100 px-4 py-2 text-sm font-semibold text-slate-800">
+      <section className="rounded-xl border border-border bg-surface shadow-card">
+        <div className="border-b border-border px-4 py-3 text-sm font-semibold text-ink">
           Recent alerts
         </div>
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-border/60">
           {(data?.recent_alerts ?? []).length === 0 && (
-            <li className="px-4 py-6 text-center text-sm text-slate-400">No recent alerts</li>
+            <li className="px-4 py-6 text-center text-sm text-muted">No recent alerts</li>
           )}
           {(data?.recent_alerts ?? []).map((a) => (
-            <li key={a.alert_id} className="flex items-center gap-3 px-4 py-2 text-sm">
+            <li key={a.alert_id} className="flex items-center gap-3 px-4 py-3 text-sm">
               <SeverityBadge severity={a.severity as "critical" | "high" | "medium" | "low"} />
-              <Link to={`/alerts/${a.alert_id}`} className="font-medium text-slate-800 hover:underline">
+              <Link to={`/alerts/${a.alert_id}`} className="font-medium text-ink hover:underline">
                 {a.alert_type_code}
               </Link>
-              <span className="text-slate-500">{a.room_name ?? a.house_name}</span>
-              <span className="ml-auto text-xs text-slate-400">
+              <span className="text-muted">{a.room_name ?? a.house_name}</span>
+              <span className="ml-auto text-xs text-muted">
                 {a.triggered_at ? new Date(a.triggered_at).toLocaleString() : ""}
               </span>
             </li>

@@ -46,23 +46,23 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty }: DataT
   }
 
   if (rows.length === 0 && empty) {
-    return <div className="py-6 text-center text-sm text-slate-500">{empty}</div>;
+    return <div className="py-6 text-center text-sm text-muted">{empty}</div>;
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
+    <div className="overflow-x-auto rounded-xl border border-border bg-surface shadow-card">
       <table className="w-full text-sm">
-        <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+        <thead className="border-b border-border bg-surface-2 text-left text-xs uppercase tracking-wide text-muted">
           <tr>
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-3 py-2 ${col.sortValue ? "cursor-pointer select-none" : ""} ${col.className ?? ""}`}
+                className={`px-4 py-3 font-medium ${col.sortValue ? "cursor-pointer select-none hover:text-ink" : ""} ${col.className ?? ""}`}
                 onClick={() => col.sortValue && toggleSort(col.key)}
               >
                 {col.header}
                 {sortKey === col.key && (
-                  <span className="ml-1" aria-hidden="true">
+                  <span className="ml-1 text-accent" aria-hidden="true">
                     {sortDir === "asc" ? "▲" : "▼"}
                   </span>
                 )}
@@ -74,11 +74,11 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty }: DataT
           {sorted.map((row) => (
             <tr
               key={rowKey(row)}
-              className={`border-b border-slate-100 last:border-0 ${onRowClick ? "cursor-pointer hover:bg-slate-50" : ""}`}
+              className={`border-b border-border/60 last:border-0 ${onRowClick ? "cursor-pointer hover:bg-surface-2" : ""}`}
               onClick={() => onRowClick?.(row)}
             >
               {columns.map((col) => (
-                <td key={col.key} className={`px-3 py-2 ${col.className ?? ""}`}>
+                <td key={col.key} className={`px-4 py-3 text-ink ${col.className ?? ""}`}>
                   {col.render(row)}
                 </td>
               ))}

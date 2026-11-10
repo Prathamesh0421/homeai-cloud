@@ -1,10 +1,4 @@
-/** FormPanel: titled card wrapping a form. Maps 422 field errors to inputs.
- *
- * The contract error envelope is `{"error": {code, message, details}}` where
- * `details` may be `{"fields": {field: [messages]}}` (FastAPI validation) or
- * our service-level `details` dict. FormPanel extracts field-level messages
- * so each input can show its own error.
- */
+/** FormPanel: titled card wrapping a form. Maps 422 field errors to inputs. */
 
 import type { ReactNode } from "react";
 
@@ -22,9 +16,9 @@ export function FormPanel({ title, children, onSubmit, footer }: FormPanelProps)
         e.preventDefault();
         onSubmit?.();
       }}
-      className="rounded-lg border border-slate-200 bg-white p-4"
+      className="rounded-xl border border-border bg-surface p-5 shadow-card"
     >
-      {title && <h3 className="mb-3 text-sm font-semibold text-slate-800">{title}</h3>}
+      {title && <h3 className="mb-4 text-sm font-semibold text-ink">{title}</h3>}
       <div className="space-y-3">{children}</div>
       {footer && <div className="mt-4 flex justify-end gap-2">{footer}</div>}
     </form>
@@ -34,8 +28,6 @@ export function FormPanel({ title, children, onSubmit, footer }: FormPanelProps)
 /** Extract per-field error messages from a contract error envelope. */
 export function fieldErrors(details: unknown): Record<string, string[]> {
   if (!details || typeof details !== "object") return {};
-  // Contract envelope (homeai_common.errors): details = [{field, issue}], field like
-  // "trigger_labels.0" -> grouped under its top-level name.
   if (Array.isArray(details)) {
     const out: Record<string, string[]> = {};
     for (const item of details as Array<Record<string, unknown>>) {
@@ -46,8 +38,6 @@ export function fieldErrors(details: unknown): Record<string, string[]> {
     return out;
   }
   const d = details as Record<string, unknown>;
-  // FastAPI validation: {"details": [{"loc": ["body","field"], "msg": "..."}]}
-  // Our service errors: {"fields": {"field": ["msg"]}} or {"field": "msg"}
   const out: Record<string, string[]> = {};
   if (Array.isArray(d.details)) {
     for (const item of d.details as Array<Record<string, unknown>>) {
@@ -79,11 +69,11 @@ export interface FieldProps {
 export function Field({ label, name, error, children }: FieldProps) {
   return (
     <div>
-      <label htmlFor={name} className="block text-xs font-medium text-slate-600">
+      <label htmlFor={name} className="block text-xs font-medium text-muted">
         {label}
       </label>
       <div className="mt-1">{children}</div>
-      {error && <p className="mt-1 text-xs text-red-600">{error}</p>}
+      {error && <p className="mt-1 text-xs text-danger">{error}</p>}
     </div>
   );
 }

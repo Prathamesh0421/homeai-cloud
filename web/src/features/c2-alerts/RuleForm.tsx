@@ -20,7 +20,7 @@ import { Button, Field, FormPanel, fieldErrors, SEVERITY_LABEL, useToasts } from
 import { labelText } from "./format";
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const inputClass = "w-full rounded border border-slate-300 px-2 py-1 text-sm";
+const inputClass = "w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink";
 
 export interface FormState {
   scope: "tenant_default" | "house";
@@ -218,7 +218,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
     >
       {!editing && (
         <fieldset>
-          <legend className="text-xs font-medium text-slate-600">Applies to</legend>
+          <legend className="text-xs font-medium text-muted">Applies to</legend>
           <div className="mt-1 flex gap-4 text-sm">
             <label>
               <input
@@ -273,7 +273,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         </Field>
       )}
       {editing && (
-        <p className="text-sm text-slate-600">
+        <p className="text-sm text-muted">
           {rule.scope === "house" ? `House ${rule.house_id}` : "Tenant default"} · {rule.alert_type_name}
         </p>
       )}
@@ -355,7 +355,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         </select>
       </Field>
 
-      <label className="flex items-center gap-2 text-sm text-slate-700">
+      <label className="flex items-center gap-2 text-sm text-ink">
         <input type="checkbox" checked={form.isEnabled} onChange={(e) => set("isEnabled", e.target.checked)} />
         Enabled
       </label>

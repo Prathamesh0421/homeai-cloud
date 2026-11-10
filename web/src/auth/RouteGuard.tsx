@@ -20,7 +20,7 @@ export function RouteGuard({ allow, children }: RouteGuardProps) {
   const location = useLocation();
 
   if (loading) {
-    return <div className="p-8 text-slate-500">Loading…</div>;
+    return <div className="p-8 text-muted">Loading…</div>;
   }
   if (!session) {
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;

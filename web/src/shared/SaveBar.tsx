@@ -11,13 +11,13 @@ export interface SaveBarProps {
 export function SaveBar({ dirty, saving, onSave, onDiscard, saveLabel = "Save" }: SaveBarProps) {
   if (!dirty) return null;
   return (
-    <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-slate-200 bg-white px-4 py-2">
+    <div className="sticky bottom-0 flex items-center justify-end gap-2 rounded-xl border border-border bg-surface/95 px-4 py-3 shadow-pop backdrop-blur">
       {onDiscard && (
         <button
           type="button"
           onClick={onDiscard}
           disabled={saving}
-          className="rounded border border-slate-300 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-50 disabled:opacity-50"
+          className="rounded-md border border-border-strong px-3.5 py-2 text-sm text-muted hover:bg-surface-2 disabled:opacity-50"
         >
           Discard
         </button>
@@ -26,7 +26,7 @@ export function SaveBar({ dirty, saving, onSave, onDiscard, saveLabel = "Save" }
         type="button"
         onClick={onSave}
         disabled={saving}
-        className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+        className="rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-white shadow-card hover:bg-primary-hover disabled:opacity-50"
       >
         {saving ? "Saving…" : saveLabel}
       </button>

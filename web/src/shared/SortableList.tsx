@@ -1,11 +1,13 @@
 /** SortableList: keyboard-accessible drag-to-reorder list.
  *
  * Each item has a grab handle. Keyboard users focus the handle and use
- * ArrowUp/ArrowDown to move the item, Space to drop. The order is lifted to
- * the parent via `onChange(newOrder)`.
+ * ArrowUp/ArrowDown to move the item. The order is lifted to the parent via
+ * `onChange(newOrder)`. Rows are rendered by the caller via `renderRow`,
+ * which receives the item, its position, and an escalation label.
  */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { GripVertical } from "lucide-react";
 
 export interface SortableItem {
   id: string;
@@ -15,9 +17,13 @@ export interface SortableItem {
 export interface SortableListProps {
   items: SortableItem[];
   onChange: (items: SortableItem[]) => void;
+  /** Render the row body (avatar, name, badges, actions). The handle + position are added by the list. */
+  renderRow?: (item: SortableItem, index: number) => ReactNode;
+  /** Optional label per position, e.g. "Notified first" / "then …". */
+  positionLabel?: (index: number, total: number) => string;
 }
 
-export function SortableList({ items, onChange }: SortableListProps) {
+export function SortableList({ items, onChange, renderRow, positionLabel }: SortableListProps) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   function move(from: number, to: number) {
@@ -30,18 +36,19 @@ export function SortableList({ items, onChange }: SortableListProps) {
   }
 
   return (
-    <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white" role="list">
+    <ul className="divide-y divide-border rounded-lg border border-border bg-surface shadow-card" role="list">
       {items.map((item, index) => {
         const isActive = activeIndex === index;
+        const pos = positionLabel?.(index, items.length) ?? `#${index + 1}`;
         return (
           <li
             key={item.id}
-            className={`flex items-center gap-2 px-3 py-2 ${isActive ? "bg-slate-100" : ""}`}
+            className={`flex items-center gap-3 px-3 py-2.5 ${isActive ? "bg-accent-soft" : ""}`}
           >
             <button
               type="button"
               aria-label={`Reorder ${item.label}. Use up and down arrows to move.`}
-              className="cursor-grab text-slate-400 hover:text-slate-600 focus:outline-none focus:ring-2 focus:ring-slate-400"
+              className="cursor-grab text-muted hover:text-ink focus:outline-none focus:ring-2 focus:ring-accent"
               onFocus={() => setActiveIndex(index)}
               onBlur={() => setActiveIndex(null)}
               onKeyDown={(e) => {
@@ -54,10 +61,10 @@ export function SortableList({ items, onChange }: SortableListProps) {
                 }
               }}
             >
-              ⠿
+              <GripVertical className="h-4 w-4" aria-hidden="true" />
             </button>
-            <span className="text-sm text-slate-700">{item.label}</span>
-            <span className="ml-auto text-xs text-slate-400">#{index + 1}</span>
+            <span className="w-20 shrink-0 text-xs font-medium text-muted">{pos}</span>
+            <span className="flex-1">{renderRow ? renderRow(item, index) : <span className="text-sm text-ink">{item.label}</span>}</span>
           </li>
         );
       })}

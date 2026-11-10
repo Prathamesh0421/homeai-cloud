@@ -9,13 +9,13 @@ export interface FilterBarProps {
 
 export function FilterBar({ children, onReset }: FilterBarProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white p-3">
+    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-3 shadow-card">
       {children}
       {onReset && (
         <button
           type="button"
           onClick={onReset}
-          className="ml-auto rounded border border-slate-200 px-2 py-1 text-xs text-slate-600 hover:bg-slate-50"
+          className="ml-auto rounded-md border border-border-strong px-2.5 py-1.5 text-xs text-muted hover:bg-surface-2"
         >
           Reset
         </button>

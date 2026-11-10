@@ -22,9 +22,9 @@ const STATUS_NOTE: Record<string, string> = {
 function Notice({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <main className="mx-auto max-w-md px-4 py-10 text-center">
-      <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-      <div className="mt-2 text-sm text-slate-600">{children}</div>
-      <p className="mt-6 text-sm font-medium text-red-700">If someone is in danger, call 911.</p>
+      <h1 className="text-xl font-semibold tracking-tight text-ink">{title}</h1>
+      <div className="mt-2 text-sm text-muted">{children}</div>
+      <p className="mt-6 text-sm font-medium text-danger">If someone is in danger, call 911.</p>
     </main>
   );
 }
@@ -78,45 +78,45 @@ export default function AlertViewPage() {
   const where = [a.room_name, a.house_name].filter(Boolean).join(", ");
   return (
     <main className="mx-auto max-w-md space-y-4 px-4 py-6">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">HomeAI Cloud alert</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted">HomeAI Cloud alert</p>
       <div className="flex flex-wrap items-center gap-2">
         <SeverityBadge severity={a.severity} />
         <StatusChip status={a.status} />
       </div>
-      <h1 className="text-2xl font-semibold text-slate-900">{a.alert_type_name}</h1>
-      <p className="text-sm text-slate-700">
+      <h1 className="text-2xl font-semibold tracking-tight text-ink">{a.alert_type_name}</h1>
+      <p className="text-sm text-ink">
         {where || "Location unavailable"} · <time dateTime={a.triggered_at}>{formatWhen(a.triggered_at)}</time>
       </p>
-      <p className="text-sm text-slate-600">{STATUS_NOTE[a.status]}</p>
+      <p className="text-sm text-muted">{STATUS_NOTE[a.status]}</p>
 
       <div
         role="note"
-        className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-base font-semibold text-red-800"
+        className="rounded-lg border border-danger/30 bg-danger-soft px-4 py-3 text-base font-semibold text-danger"
       >
         If someone is in danger, call 911.
       </div>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">What was heard</h2>
+      <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
+        <h2 className="mb-2 text-sm font-semibold text-ink">What was heard</h2>
         {a.labels.length > 0 && (
-          <p className="mb-2 text-sm text-slate-700">
+          <p className="mb-2 text-sm text-ink">
             {labelText(a.labels[0].label)} ({percent(a.labels[0].confidence)} confidence)
           </p>
         )}
         <ConfidenceBars scores={a.labels.map((l) => ({ label: labelText(l.label), score: l.confidence }))} />
       </section>
 
-      <section className="rounded-lg border border-slate-200 bg-white p-4">
-        <h2 className="mb-2 text-sm font-semibold text-slate-700">Recording</h2>
+      <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
+        <h2 className="mb-2 text-sm font-semibold text-ink">Recording</h2>
         {a.clip_url ? (
           // Audio or video clip from C1; a <video> element plays both.
           <video controls preload="none" src={a.clip_url} className="w-full" aria-label="Alert recording" />
         ) : (
-          <p className="text-sm text-slate-500">The recording is not available.</p>
+          <p className="text-sm text-muted">The recording is not available.</p>
         )}
       </section>
 
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-muted">
         This link is valid until <time dateTime={a.expires_at}>{formatWhen(a.expires_at)}</time>. It
         updates on its own while open.
       </p>

@@ -135,22 +135,23 @@ describe("RulesPage", () => {
       }),
     ]);
     renderRules();
-    const rows = await screen.findAllByRole("row");
-    expect(within(rows[1]).getByText("Tenant default · Acme Care")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("default")).toBeInTheDocument(); // severity from the type
-    expect(within(rows[1]).getByText("55%")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("✓ On")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("House …00a1 · room …a104")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("Fall indicator")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("✕ Off")).toBeInTheDocument();
-    expect(within(rows[2]).getByText("2")).toBeInTheDocument();
-    expect(within(rows[2]).getByRole("button", { name: "Enable" })).toBeInTheDocument();
+    const rows = await screen.findAllByRole("listitem");
+    expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText("Possible intrusion")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("Tenant default")).toBeInTheDocument();
+    expect(within(rows[0]).getByText("default")).toBeInTheDocument(); // severity from the type
+    expect(within(rows[0]).getByText("55%")).toBeInTheDocument();
+    expect(within(rows[0]).getByRole("switch", { name: "Disable rule" })).toBeChecked();
+    expect(within(rows[1]).getByText("House …00a1 · room …a104")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Fall indicator")).toBeInTheDocument();
+    expect(within(rows[1]).getByRole("switch", { name: "Enable rule" })).not.toBeChecked();
+    expect(within(rows[1]).getByText("2")).toBeInTheDocument();
   });
 
   it("filters by tenant, type and state", async () => {
     const { calls } = routes();
     renderRules();
-    await screen.findByText("Tenant default · Acme Care");
+    await screen.findAllByRole("listitem");
     fireEvent.change(screen.getByRole("combobox", { name: /^Tenant/ }), { target: { value: TENANTS[1].tenant_id } });
     fireEvent.change(screen.getByRole("combobox", { name: /^Enabled/ }), { target: { value: "false" } });
     await waitFor(() => {
@@ -164,7 +165,7 @@ describe("RulesPage", () => {
   it("applies the house filter only for a whole id", async () => {
     const { calls } = routes();
     renderRules();
-    await screen.findByText("Tenant default · Acme Care");
+    await screen.findAllByRole("listitem");
     const input = screen.getByRole("textbox", { name: /^House id/ });
     fireEvent.change(input, { target: { value: "2222" } });
     expect(input).toHaveAttribute("aria-invalid", "true");
@@ -173,7 +174,7 @@ describe("RulesPage", () => {
       const lists = calls.filter((c) => c.url.startsWith("/api/v1/alert-rules?"));
       expect(lists.map((c) => c.url.includes("house_id="))).toEqual([false, true]); // no partial ids
     });
-    expect(screen.getByText("Tenant default · Acme Care")).toBeInTheDocument();
+    expect(screen.getAllByText("Possible intrusion").length).toBeGreaterThan(0);
   });
 
   it("creates tenant defaults once a tenant is chosen", async () => {
@@ -222,8 +223,9 @@ describe("RulesPage", () => {
       },
     });
     renderRules();
-    fireEvent.click(await screen.findByRole("button", { name: "Disable" }));
-    const dialog = screen.getByRole("dialog");
+    // Turning the enabled switch off asks for confirmation first.
+    fireEvent.click(await screen.findByRole("switch", { name: "Disable rule" }));
+    const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Disable this rule?");
     fireEvent.click(within(dialog).getByRole("button", { name: "Disable" }));
     expect(await screen.findByText("Rule disabled")).toBeInTheDocument();
@@ -239,7 +241,7 @@ describe("RulesPage", () => {
       },
     });
     renderRules();
-    fireEvent.click(await screen.findByRole("button", { name: "Disable" }));
+    fireEvent.click(await screen.findByRole("switch", { name: "Disable rule" }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Disable" }));
     expect(await screen.findByText("This rule was changed by someone else; reloaded the list.")).toBeInTheDocument();
     await waitFor(() => expect(calls.filter((c) => c.url.startsWith("/api/v1/alert-rules?")).length).toBe(2));

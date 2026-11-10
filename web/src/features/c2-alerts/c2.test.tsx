@@ -128,7 +128,8 @@ describe("AlertsPage", () => {
     expect(within(rows[1]).getByLabelText("Severity High")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Open")).toBeInTheDocument();
     expect(within(rows[1]).getByText("Maple St · Kitchen")).toBeInTheDocument();
-    expect(within(rows[1]).getByText("Glass break · 78%")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("Glass break")).toBeInTheDocument();
+    expect(within(rows[1]).getByText("78%")).toBeInTheDocument();
     expect(within(rows[1]).getByText("2 m ago")).toBeInTheDocument();
     expect(within(rows[2]).getByText("Acknowledged")).toBeInTheDocument();
   });
@@ -176,7 +177,7 @@ describe("AlertsPage", () => {
   it("has empty and error states", async () => {
     stubFetch({ "GET /api/v1/alerts": { body: page([]) }, "GET /api/v1/alert-types": { body: TYPES } });
     const { unmount } = renderList();
-    expect(await screen.findByText("No alerts")).toBeInTheDocument();
+    expect(await screen.findByText(/No alerts/)).toBeInTheDocument();
     unmount();
 
     stubFetch({
@@ -191,7 +192,8 @@ describe("AlertsPage", () => {
   it("opens an alert from its row or link", async () => {
     stubFetch({ "GET /api/v1/alerts": { body: page([summary()]) }, "GET /api/v1/alert-types": { body: TYPES } });
     renderList();
-    fireEvent.click(await screen.findByText("Maple St · Kitchen"));
+    // The alert type name is a deep link to the full detail page; the row itself opens a drawer.
+    fireEvent.click(await screen.findByRole("link", { name: "Possible intrusion" }));
     expect(await screen.findByTestId("detail-route")).toBeInTheDocument();
   });
 
