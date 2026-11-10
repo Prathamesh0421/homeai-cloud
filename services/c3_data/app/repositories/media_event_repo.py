@@ -54,6 +54,9 @@ class MediaEventRepo:
         )
 
     def mark_analyzed(self, media_id: str, detection_id: str, handoff_status: str) -> None:
+        # Clear the claim fields on success: an analyzed clip is done, so a lingering
+        # claimed_at/worker_id is stale and would otherwise read as a half-finished claim to
+        # the integrity check. Clearing them here is the clean fix (C3-12 §5).
         self.collection.update_one(
             {"_id": media_id},
             {
@@ -62,7 +65,8 @@ class MediaEventRepo:
                     "detection_id": detection_id,
                     "handoff_status": handoff_status,
                     "error": None,
-                }
+                },
+                "$unset": {"claimed_at": "", "worker_id": ""},
             },
         )
 
