@@ -13,7 +13,7 @@ from homeai_common.errors import install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
-from app.api import activity, detections, inference, media_events, models, records
+from app.api import activity, detections, inference, integrity, media_events, models, records
 from app.db.mongo_indexes import ensure_indexes
 from app.ml.model_cache import ModelCache
 from app.services.model_registry import bundled_class_names
@@ -90,5 +90,6 @@ def create_app(
     app.include_router(records.router)
     app.include_router(detections.router)
     app.include_router(activity.router)
-    # More feature routers (dictionary, integrity) are added in later phases.
+    app.include_router(integrity.router)
+    # More feature routers (dictionary) are added in later phases.
     return app

@@ -168,9 +168,14 @@ Metrics: `accuracy`, per-label `precision`, `recall`, `f1`, `support`, `confusio
 ### 4.5 Activity patterns and anomaly score
 - Rollup: house timezone from `c1.houses` (reader); hour `h` = local hour of `detected_at`; `$inc hours.h`
   in the day document (upsert); `last_activity_at`.
-- Nightly job (01:00 UTC): for each house/room, baseline = mean and std of `hours[h]` over the previous 28 days.
-- `anomaly_score = mean_h min(1, |count_h − mean_h| / (3·std_h + 1))` computed on each rollup; bands:
+- Nightly baseline job (02:00 UTC): for each house/room with a bucket today, baseline = mean and std of
+  `hours[h]` over the previous 28 **active** days (days with a bucket). Cold start: with < 14 days of history
+  the band is suppressed (`insufficient_data`). Run on demand with `make baseline-run` (C3-11 §4a).
+- `anomaly_score = mean_h min(1, |count_h − mean_h| / (3·std_h + 1))` computed by the baseline job; bands:
   `< 0.30` normal, `0.30–0.60` unusual, `≥ 0.60` anomalous.
+- **Scheduler (C3-12):** one APScheduler in the worker process drives both the baseline job (02:00 UTC) and the
+  nightly integrity check (03:00 UTC). Hours are UTC and configurable (`C3_BASELINE_JOB_HOUR`,
+  `C3_INTEGRITY_JOB_HOUR`); set `C3_SCHEDULER_ENABLED=false` on extra workers when scaling so jobs fire once.
 
 ### 4.6 Records scope
 | Entity | Source (read-only) | house_owner | iot_staff | cloud_staff |
@@ -189,15 +194,25 @@ and samples Mongo collections' declared schemas (`app/dictionary/mongo_schemas.p
 `{version, generated_at, entities:[{name, store, owner_component, fields:[{name, type, nullable, description}]}]}`.
 Descriptions come from `app/dictionary/descriptions.yaml` (hand-written, one line per field).
 
-### 4.8 Integrity checks (async via `BackgroundTasks`; nightly 02:00 UTC for all tenants)
-| Check | Severity | Auto-action |
-|---|---|---|
-| detection whose `media_id` not in `media_events` | high | — |
-| `media_events.status=analyzed` without `detection_id` | medium | — (offer re-classify) |
-| `c2.alerts.detection_id` not in `ai_detections` | high | — |
-| `processing` older than 120 s | medium | requeue candidate |
-| `failed` clips | medium | list for requeue |
-| `handoff_status=pending` | low | re-send to C2 |
+### 4.8 Integrity checks (async via `BackgroundTasks`; nightly 03:00 UTC for all tenants via the shared scheduler)
+`POST /integrity-checks` starts a check (202 `{report_id}`, status `running`); the scan runs in the background
+and moves the report `running → done`. A second concurrent check for the same tenant is 409 `check_running`
+(the `ux_one_running` partial unique index is the guard). Poll `GET /integrity-reports/{id}`. Run on demand
+with `make integrity-run`. Read-only: the only write is the `integrity_reports` row.
+
+| Check (`kind`) | Severity |
+|---|---|
+| `orphan_detection` — detection whose `media_id` not in `media_events` | medium |
+| `analyzed_no_detection` — `status=analyzed` without `detection_id` (the `6dddfcc` fault class) | high |
+| `stuck_processing` — `processing` past ~3× visibility timeout with no live worker | medium |
+| `handoff_pending` — `status=analyzed` with `handoff_status=pending` | medium |
+| `lingering_claim` — `claimed_at`/`worker_id` left on an `analyzed` clip (`mark_analyzed` now clears them) | low |
+| `detection_scope_mismatch` — detection `tenant_id`/`house_id` ≠ its clip | high |
+| `activity_scope_mismatch` — activity bucket `tenant_id`/`house_id` ≠ a counted detection's clip (8b propagates these) | high |
+| `bucket_count_mismatch` — `sum(hours) ≠ len(counted)` (rollup corruption) | low |
+
+Requeue a failed clip: `POST /media-events/{media_id}/requeue` (cloud_staff; only `failed`, else 409 `not_failed`;
+resets `status=queued, attempts=0, error=null`; idempotent).
 
 ### 4.9 Backup (nightly 03:00 UTC, also `python -m app.jobs.backup` on demand)
 `pg_dump -Fc` (via a dedicated `backup` role) and `mongodump --archive --gzip` → S3 `backups/<date>/`; keep 14

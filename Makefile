@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -10,6 +10,7 @@ help:
 	@echo "  make test        pytest for libs/homeai_common and every service"
 	@echo "  make test-common pytest for libs/homeai_common only"
 	@echo "  make test-c4     pytest for one service (test-c1 .. test-c4)"
+	@echo "  make test-c2-full  C2 tests + coverage against real Postgres/Mongo/LocalStack containers"
 	@echo "  make web         run Vite dev server (web/)"
 	@echo "  make migrate     run Alembic for every service (once they exist)"
 
@@ -31,6 +32,12 @@ test:
 			echo "== $$pkg"; (cd $$pkg && $(PYTEST) -q) || status=1; \
 		fi; \
 	done; exit $$status
+
+# C2's full suite with coverage against real Postgres/Mongo/LocalStack containers on spare ports
+# (reused between runs; the demo's "unit tests running" step). Plain `make test-c2` skips the
+# store-backed tests when no database is configured.
+test-c2-full:
+	PYTHON=$(PYTHON) scripts/test_c2.sh $(ARGS)
 
 test-common:
 	cd libs/homeai_common && $(PYTEST) -q
@@ -147,3 +154,12 @@ demo-c2-reset:
 baseline-run:
 	$(COMPOSE_PROD) run --rm --no-deps -T -v $(CURDIR):/workspace:ro -e PYTHONPATH=/app \
 		c3-data python /workspace/scripts/demo/c3_baseline.py $(ARGS)
+
+# Run the C3 integrity check on demand (C3-12). The nightly scheduler runs this across all
+# tenants; this trigger lets demo prep run it without waiting for the clock. It records an
+# integrity_reports row and prints a findings-by-severity summary.
+#   make integrity-run                        (all tenants, records a report)
+#   make integrity-run ARGS="--tenant-id <uuid>"   (one tenant, no report row)
+integrity-run:
+	$(COMPOSE_PROD) run --rm --no-deps -T -v $(CURDIR):/workspace:ro -e PYTHONPATH=/app \
+		c3-data python /workspace/scripts/demo/c3_integrity.py $(ARGS)

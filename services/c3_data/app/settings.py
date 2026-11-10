@@ -40,6 +40,13 @@ class Settings(BaseServiceSettings):
     worker_heartbeat_interval: int = 10
     worker_sleep: int = 2
 
+    # Nightly background jobs (the one APScheduler in the worker drives both; C3-12). Hours are
+    # UTC, matching the rest of C3's time handling. Set scheduler_enabled=false to run a worker
+    # without the scheduler (e.g. a second worker when scaling, so jobs fire once).
+    scheduler_enabled: bool = True
+    baseline_job_hour: int = 2  # 02:00 UTC
+    integrity_job_hour: int = 3  # 03:00 UTC
+
 
 @lru_cache
 def get_settings() -> Settings:
