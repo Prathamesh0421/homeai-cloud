@@ -94,6 +94,7 @@ C2_BASE_URL=http://c2-alerts:8002
 C3_BASE_URL=http://c3-data:8003
 
 # PostgreSQL (${DB_HOST}). Passwords from Secrets Manager (set_passwords.sh applies them).
+DATABASE_URL_C1=$(pg_url c1_app)
 DATABASE_URL_C2=$(pg_url c2_app)
 DATABASE_READER_URL_C2=$(pg_url c2_reader)
 DATABASE_URL_C3=$(pg_url c3_app)
@@ -101,6 +102,7 @@ DATABASE_READER_URL_C3=$(pg_url c3_reader)
 DATABASE_URL_C4=$(pg_url c4_app)
 
 # MongoDB — container on the EC2 host (passwords aligned by set_passwords.sh)
+MONGO_URL_C1=$(mongo_url c1_app)
 MONGO_URL_C2_READER=$(mongo_url c2_reader)
 MONGO_URL_C3=$(mongo_url c3_app)
 MONGO_URL_C4=$(mongo_url c4_app)
