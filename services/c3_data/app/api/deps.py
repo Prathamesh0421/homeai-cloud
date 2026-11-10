@@ -68,6 +68,7 @@ def build_pipeline(request: Request, mdb: Database):
     from app.repositories.detection_repo import DetectionRepo
     from app.repositories.media_event_repo import COLLECTION as EV
     from app.repositories.media_event_repo import MediaEventRepo
+    from app.services.activity_service import build_rollup
     from app.services.classification_pipeline import ClassificationPipeline
 
     settings: Settings = request.app.state.settings
@@ -77,4 +78,5 @@ def build_pipeline(request: Request, mdb: Database):
         detection_repo=DetectionRepo(mdb[DET]),
         media_event_repo=MediaEventRepo(mdb[EV]),
         on_detection=build_handoff(settings),
+        on_rollup=build_rollup(mdb),
     )

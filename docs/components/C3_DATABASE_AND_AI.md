@@ -177,7 +177,8 @@ Metrics: `accuracy`, per-label `precision`, `recall`, `f1`, `support`, `confusio
 |---|---|---|---|---|
 | houses, rooms, feeds | `c1.*` | own houses | own tenant | all (`tenant_id` filter) |
 | clips | `media_events` | own houses | own tenant | all |
-| detections, activity_patterns | own Mongo | own houses | own tenant | all |
+| detections | own Mongo | own houses | own tenant | all |
+| activity_patterns | own Mongo | own houses | 403 | all |
 | alerts | `c2.alerts` | own houses | 403 | all |
 Field filters only on a whitelist per entity (e.g. detections: `top_label`, `room_id`; clips: `status`, `feed_id`).
 Never return `password_hash`/`secret_hash` (C4 tables are not browsable).

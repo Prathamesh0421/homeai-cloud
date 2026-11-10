@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -137,3 +137,13 @@ demo-c2-quiet-hours:
 
 demo-c2-reset:
 	$(COMPOSE_PROD) exec -T c2-alerts python -m app.demo_reset $(ARGS)
+
+# --- C3 demo helpers (C3 plan §10) ----------------------------------------------------------
+# Run the activity-baseline job on demand so the Activity chart shows a baseline band and an
+# anomaly badge without waiting for the nightly clock (the shared scheduler lands in 8c).
+# Runs in the c3-data image on the compose network, repo mounted, using the host .env.
+#   make baseline-run                         (as of now)
+#   make baseline-run ARGS="--as-of 2026-07-01T12:00:00Z"
+baseline-run:
+	$(COMPOSE_PROD) run --rm --no-deps -T -v $(CURDIR):/workspace:ro -e PYTHONPATH=/app \
+		c3-data python /workspace/scripts/demo/c3_baseline.py $(ARGS)
