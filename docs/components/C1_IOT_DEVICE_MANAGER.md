@@ -219,12 +219,17 @@ playback URL returns presigned URL; `GET /feeds/stats` counts. Target coverage �
 | C1-15 | Deploy on EC2, verify with real S3; demo prep and video | infra §8 |
 
 ## 9. Acceptance checklist
-- [ ] All endpoints in §3 exist, documented in `/api/v1/docs/c1`, and follow the envelope.
-- [ ] Ingest is exactly-once (duplicate client id) and leaves no orphan object on DB failure (test proves it).
-- [ ] Feed state machine and connectivity behave per §4 (device simulator start/stop shows online→offline).
-- [ ] Owners are read-only and isolated; tenant isolation test passes.
+- [x] All endpoints in §3 exist, documented in `/api/v1/docs/c1`, and follow the envelope.
+- [x] Ingest is exactly-once (duplicate client id) and leaves no orphan object on DB failure (test proves it).
+- [x] Feed state machine and connectivity behave per §4 (device simulator start/stop shows online→offline).
+- [x] Owners are read-only and isolated; tenant isolation test passes.
 - [ ] C3 worker picks up clips uploaded by C1 (integration test I-1 in doc 05).
 - [ ] UI pages in §6 work on EC2 with real S3.
+
+Status 10 Nov 2026: the first four are checked by `make test-c1-full` (Postgres, Mongo, LocalStack)
+and on the local Docker stack (simulator start/stop, owner isolation with real C4 tokens). The UI
+pages (branch `c1/iot-ui`) work locally against LocalStack S3. Open: I-1 needs C3 running (EC2), and
+the UI on EC2 waits for the deploy (`docs/C1_DEMO_RUNBOOK.md` §0).
 
 ---
 ## 10. Deliverable #3 demo (C1)

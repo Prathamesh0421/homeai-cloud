@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full
+.PHONY: help lint lint-py lint-web test test-common web migrate seed token test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim demo-c1-reset deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -11,8 +11,11 @@ help:
 	@echo "  make test-common pytest for libs/homeai_common only"
 	@echo "  make test-c4     pytest for one service (test-c1 .. test-c4)"
 	@echo "  make test-c2-full  C2 tests + coverage against real Postgres/Mongo/LocalStack containers"
+	@echo "  make test-c1-full  C1 tests + coverage against real Postgres/Mongo/LocalStack containers"
 	@echo "  make web         run Vite dev server (web/)"
 	@echo "  make migrate     run Alembic for every service (once they exist)"
+	@echo "  make seed        demo seed for every component (C4 -> C1 -> C2), in the containers"
+	@echo "  make token ROLE=iot_staff | EMAIL=... | CLIENT=c3-worker   print a dev JWT from C4"
 
 lint: lint-py lint-web
 
@@ -38,6 +41,10 @@ test:
 # store-backed tests when no database is configured.
 test-c2-full:
 	PYTHON=$(PYTHON) scripts/test_c2.sh $(ARGS)
+
+# Same for C1 (its own containers on other spare ports).
+test-c1-full:
+	PYTHON=$(PYTHON) scripts/test_c1.sh $(ARGS)
 
 test-common:
 	cd libs/homeai_common && $(PYTEST) -q
@@ -70,7 +77,19 @@ migrate:
 		fi; \
 	done
 
-# C4 owns its own seed until the master scripts/seed.py (P0-10) lands. Migrations first:
+# Every component's demo seed in order (C4 -> C1 -> C2; C3's model comes from its migration),
+# each inside its running container; idempotent (P0-10, docs/03 §7). Python stdlib only, so it
+# also runs on the EC2 host: make seed SEED_COMPOSE="$(COMPOSE_PROD) $(PROD_PROFILES)"
+SEED_COMPOSE ?= $(COMPOSE) --profile c1 --profile c3 --profile gateway
+seed:
+	$(PYTHON) scripts/seed.py --compose "$(SEED_COMPOSE)" $(if $(ONLY),--only $(ONLY))
+
+# Dev JWT from C4 for a seeded user or service client (docs/03 §6). C4_PUBLIC_URL defaults to
+# http://localhost:8004. Example: TOKEN=$$(make -s token ROLE=iot_staff)
+token:
+	@$(PYTHON) scripts/mint_token.py $(if $(ROLE),--role $(ROLE)) $(if $(EMAIL),--email $(EMAIL)) $(if $(CLIENT),--client $(CLIENT))
+
+# C4's own seed (`make seed` runs it first, in its container). Migrations first:
 # the seed only writes rows (as c4_app, from DATABASE_URL_C4).
 # On EC2 (no local alembic): use `make seed-c4-docker` after the stack is up.
 seed-c4:
@@ -91,6 +110,21 @@ seed-c4-docker:
 # In the stack: docker compose -f infra/docker-compose.yml exec c2-alerts python -m app.seed
 seed-c2:
 	cd services/c2_alerts && alembic upgrade head && $(PYTHON) -m app.seed
+
+# C1's part of the seed: houses, rooms and feeds with the fixed IDs of scripts/seed_ids.py.
+# Migrations first; idempotent (as c1_app, DATABASE_URL_C1). Run it before seed-c2/seed-c4's
+# house references are used (C2 answers 503 until c1.houses exists).
+seed-c1:
+	cd services/c1_iot && alembic upgrade head && PYTHONPATH=$(CURDIR) $(PYTHON) -m app.seed
+
+# The same inside the c1-iot image on EC2 (host has no Python), repo mounted for seed_ids.py.
+seed-c1-docker:
+	$(COMPOSE_PROD) exec -T c1-iot alembic upgrade head
+	$(COMPOSE_PROD) run --rm --no-deps \
+		-v "$(CURDIR)":/workspace:ro \
+		-e PYTHONPATH=/workspace \
+		-w /app \
+		c1-iot python -m app.seed
 
 # --- AWS / EC2 deploy (C4-16) ---------------------------------------------
 # Render a production .env from the provisioned AWS resources. Run on the EC2
@@ -144,6 +178,21 @@ demo-c2-quiet-hours:
 
 demo-c2-reset:
 	$(COMPOSE_PROD) exec -T c2-alerts python -m app.demo_reset $(ARGS)
+
+# --- C1 demo helpers (C1 plan §10.1) --------------------------------------------------------
+# Device simulator in the c1-iot image on the compose network (host has no Python), repo mounted,
+# SERVICE_CLIENT_SECRET_DEVICE from the host .env. Ctrl-C stops it; the feed then goes offline.
+#   make demo-c1-sim ARGS="--feed-id 66666666-0000-0000-0000-00000000a101 --interval 5"
+demo-c1-sim:
+	$(COMPOSE_PROD) run --rm --no-deps -v "$(CURDIR)":/workspace:ro -w /workspace \
+		-e HOMEAI_API_URL=http://caddy:80 c1-iot python scripts/device_sim.py $(ARGS)
+
+# Back to the C1 seed between rehearsals: removes demo houses/rooms/feeds (and their clips),
+# seed feeds back to config v1. Run inside the c1-iot container (repo mounted for seed_ids).
+#   make demo-c1-reset ARGS=--yes
+demo-c1-reset:
+	$(COMPOSE_PROD) run --rm --no-deps -T -v "$(CURDIR)":/workspace:ro -e PYTHONPATH=/workspace \
+		-w /app c1-iot python -m app.demo_reset $(ARGS)
 
 # --- C3 demo helpers (C3 plan §10) ----------------------------------------------------------
 # Run the activity-baseline job on demand so the Activity chart shows a baseline band and an
