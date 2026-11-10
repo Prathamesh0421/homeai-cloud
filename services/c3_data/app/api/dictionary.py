@@ -15,7 +15,7 @@ from homeai_common.errors import ApiError
 from homeai_common.pagination import Envelope, data_response
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_session
+from app.api.deps import get_reader_connection, get_session
 from app.repositories.dictionary_repo import DictionaryRepo, VersionExists
 from app.schemas.dictionary import GenerateRequest
 from app.services import dictionary_service
@@ -30,14 +30,18 @@ def publish(
     body: GenerateRequest,
     principal: Principal = Depends(require_roles("cloud_staff")),
     session: Session = Depends(get_session),
+    reader_conn=Depends(get_reader_connection),
 ) -> dict:
     """Generate (from the live schema) or publish a dictionary version. 409 if it exists.
 
-    Reflection runs on C3's own (c3_app) connection: it owns schema c3 and, on RDS, is granted
-    SELECT on the other schemas (docs §11), so one connection reflects all four.
+    Reflection reads schema c3 on C3's own (c3_app) session connection and c1/c2/c4 on the
+    read-only (c3_reader) connection — no single role can USE all four schemas. A missing reader
+    URL fails closed with a clear 503. The version row is always written on the c3_app session.
     """
     if body.generate:
-        document = dictionary_service.generate(session.connection(), body.version)
+        if reader_conn is None:
+            raise ApiError(503, "dependency_unavailable", "reader database not configured")
+        document = dictionary_service.generate(session.connection(), reader_conn, body.version)
     else:
         document = body.document
 

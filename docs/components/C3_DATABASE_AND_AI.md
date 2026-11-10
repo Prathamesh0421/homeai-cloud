@@ -189,20 +189,25 @@ Field filters only on a whitelist per entity (e.g. detections: `top_label`, `roo
 Never return `password_hash`/`secret_hash` (C4 tables are not browsable).
 
 ### 4.7 Data dictionary generation
-`dictionary_service.generate(conn, version)` reflects all four Postgres schemas (c1..c4) from
-`information_schema.columns` and merges the declared Mongo collection shapes
+`dictionary_service.generate(app_conn, reader_conn, version)` reflects all four Postgres schemas (c1..c4)
+from `information_schema.columns` and merges the declared Mongo collection shapes
 (`app/dictionary/mongo_schemas.py`), producing
 `{version, generated_at, entities:[{name, store, schema_name, owner_component, fields:[{name, type, nullable, internal, description}]}]}`.
-Reflection runs on **C3's own (c3_app) connection**, not the reader role: `c3_app` owns schema c3 and on
-RDS is granted SELECT on the other schemas (§11), and `information_schema` returns only the columns the
-connecting role may see — the reader role sees nothing for tables it does not own, so it is the wrong lens
-for metadata. Fail-closed still holds: a genuine privilege error (`42501`) on the reflection query is
-re-raised, not swallowed; and `activity_patterns.counted` is reflected but flagged `internal` (not an API
-field). Descriptions come from `app/dictionary/descriptions.py` (hand-written, one line per field).
-Cross-schema coverage (c1/c2/c4) is only fully populated full-stack; in per-package CI those schemas are
-absent and only c3 is reflected. Endpoints: `POST /data-dictionary {version, generate:true}` (201, 409 on a
-duplicate immutable version), `GET /data-dictionary` (latest or `?version=`, grouped by owner component),
-`GET /data-dictionary?format=csv`, `GET /data-dictionary/versions`. cloud_staff only.
+No single non-superuser role can read all four schemas: `c3_app` owns schema c3 but has no USAGE on
+c1/c2/c4, while `c3_reader` has USAGE on c1/c2/c4 but none on c3 (`init.sql` grants them that way; we do not
+change it). So reflection uses each role for what it is granted — **schema c3 on the `c3_app` session
+connection, and c1/c2/c4 on the `c3_reader` connection** — because `information_schema` returns only the
+columns the connecting role may see. A missing reader URL fails closed with a clear 503. Fail-closed also
+holds per schema: `_assert_schemas_readable` (via `pg_catalog.pg_namespace`) raises if a schema EXISTS but
+the role cannot USE it, and a genuine `42501` on the reflection query re-raises — an unreadable schema can
+never silently shrink the dictionary. `activity_patterns.counted` is reflected but flagged `internal` (not
+an API field). Descriptions come from `app/dictionary/descriptions.py` (hand-written, one line per field).
+Cross-schema coverage (c1/c2/c4) is only fully populated full-stack; in per-package CI those schemas have no
+tables and only c3 is reflected. For c4 the password tables are revoked from `c3_reader` in `init.sql`, so
+`information_schema` naturally omits `password_hash`/`secret_hash` and the dictionary never exposes secrets.
+Endpoints: `POST /data-dictionary {version, generate:true}` (201, 409 on a duplicate immutable version),
+`GET /data-dictionary` (latest or `?version=`, grouped by owner component), `GET /data-dictionary?format=csv`,
+`GET /data-dictionary/versions`. cloud_staff only.
 
 ### 4.8 Integrity checks (async via `BackgroundTasks`; nightly 03:00 UTC for all tenants via the shared scheduler)
 `POST /integrity-checks` starts a check (202 `{report_id}`, status `running`); the scan runs in the background

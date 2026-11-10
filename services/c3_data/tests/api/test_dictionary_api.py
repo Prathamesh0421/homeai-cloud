@@ -47,3 +47,14 @@ def test_post_requires_generate_or_document(client, auth_header):
         headers=auth_header(role="cloud_staff"),
     )
     assert r.status_code == 422
+
+
+def test_generate_without_reader_is_503(client, auth_header):
+    # Default settings have no reader URL, so get_reader_connection yields None -> 503.
+    r = client.post(
+        "/api/v1/data-dictionary",
+        json={"version": "1.0.0", "generate": True},
+        headers=auth_header(role="cloud_staff"),
+    )
+    assert r.status_code == 503
+    assert r.json()["error"]["code"] == "dependency_unavailable"

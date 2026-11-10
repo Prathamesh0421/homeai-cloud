@@ -4,20 +4,31 @@ Asserts the DoD: a column added to the live schema shows up in the regenerated d
 covers all four schemas (c1/c2/c4 skipped when their tables are absent in the per-package CI
 DB); versions are immutable (409 on re-publish); activity_patterns.counted is marked internal.
 
-Reflection runs on C3's own connection (the one that owns/sees schema c3). In the per-package CI
-DB the DSN is the superuser, which owns every schema; on RDS it is c3_app, which owns c3 and is
-granted SELECT on the others. Either way ``information_schema`` returns what that role can see.
+Reflection splits across two roles because no single non-superuser role can USE all four
+schemas: schema c3 is read on the c3_app connection, c1/c2/c4 on the c3_reader connection. The
+role-boundary tests below prove the split is actually required (they would fail if the code
+reflected a schema with the wrong role). In the per-package CI DB the DSN is the superuser, so
+SET ROLE works and these run; locally under a non-member role the SET ROLE is refused and they
+skip (never silently pass).
 """
 
 from __future__ import annotations
 
+import contextlib
 import os
 import uuid
 
 import pytest
 from app.repositories.dictionary_repo import DictionaryRepo, VersionExists
 from app.services import dictionary_service
+from app.services.dictionary_service import (
+    CROSS_SCHEMAS,
+    OWN_SCHEMAS,
+    SchemaUnreadable,
+    _assert_schemas_readable,
+)
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import ProgrammingError
 
 pytestmark = pytest.mark.integration
 
@@ -35,16 +46,31 @@ def _engine():
     return create_engine(pg, future=True)
 
 
+@contextlib.contextmanager
+def _role(conn, role: str):
+    """SET ROLE for the block; skip the test if the switch is refused (non-member DSN locally)."""
+    try:
+        conn.execute(text(f"SET ROLE {role}"))
+    except ProgrammingError as exc:
+        pytest.skip(f"cannot SET ROLE {role} on this connection: {type(exc.orig).__name__}")
+    try:
+        yield
+    finally:
+        with contextlib.suppress(Exception):
+            conn.execute(text("RESET ROLE"))
+
+
 def _entity(document, name):
     return next((e for e in document["entities"] if e["name"] == name), None)
 
 
+# -- reflection on the superuser DSN (can USE every schema): pass same conn for both roles ----
 def test_generate_reflects_c3_tables(pg_session):
     """The c3 schema (migrated to head by pg_session) is reflected with its real columns."""
     eng = _engine()
     try:
         with eng.connect() as conn:
-            doc = dictionary_service.generate(conn, "it-1")
+            doc = dictionary_service.generate(conn, conn, "it-1")
     finally:
         eng.dispose()
 
@@ -75,7 +101,7 @@ def test_new_column_shows_up_in_regenerated_dictionary(pg_session):
             conn.execute(text(f"ALTER TABLE c3.ml_models ADD COLUMN {col} text"))
         try:
             with eng.connect() as conn:
-                doc = dictionary_service.generate(conn, "it-2")
+                doc = dictionary_service.generate(conn, conn, "it-2")
             ml = _entity(doc, "ml_models")
             assert col in {f["name"] for f in ml["fields"]}
         finally:
@@ -89,7 +115,7 @@ def test_mongo_entities_merged_with_counted_internal(pg_session):
     eng = _engine()
     try:
         with eng.connect() as conn:
-            doc = dictionary_service.generate(conn, "it-3")
+            doc = dictionary_service.generate(conn, conn, "it-3")
     finally:
         eng.dispose()
     ap = _entity(doc, "activity_patterns")
@@ -103,7 +129,7 @@ def test_covers_all_four_schemas_or_skips_absent(pg_session):
     eng = _engine()
     try:
         with eng.connect() as conn:
-            doc = dictionary_service.generate(conn, "it-4")
+            doc = dictionary_service.generate(conn, conn, "it-4")
     finally:
         eng.dispose()
 
@@ -117,27 +143,70 @@ def test_covers_all_four_schemas_or_skips_absent(pg_session):
         )
 
 
-def test_unreadable_schema_fails_loud(pg_session):
-    """Fail-closed: a schema that exists but the role cannot read raises, not an empty dict.
+# -- role boundaries: the test that would have caught the single-connection bug ---------------
+def test_role_boundaries_for_readability_guard(pg_session):
+    """Each role may USE only its own subset; the guard raises on the wrong pairing.
 
-    c3 exists; under SET ROLE c3_reader (which lacks USAGE on c3 when tables are superuser-owned)
-    generate must raise SchemaUnreadable rather than silently reflecting zero columns. If the DSN
-    role can read c3 anyway (e.g. c3_app owns it locally), there is nothing to prove, so skip.
+    This is the regression guard: if the code ever reflected a schema with the wrong role, one
+    of these assertions fails.
     """
-    from app.services.dictionary_service import SchemaUnreadable
-
     eng = _engine()
     try:
         with eng.connect() as conn:
+            # c3_app owns c3 but cannot USE c1/c2/c4 -> guard must raise for the cross set.
+            with _role(conn, "c3_app"):
+                with pytest.raises(SchemaUnreadable):
+                    _assert_schemas_readable(conn, CROSS_SCHEMAS)
+                _assert_schemas_readable(conn, OWN_SCHEMAS)  # c3 is fine -> no raise
+            # c3_reader has USAGE on c1/c2/c4 but not c3 -> guard must raise for the own set.
+            with _role(conn, "c3_reader"):
+                with pytest.raises(SchemaUnreadable):
+                    _assert_schemas_readable(conn, OWN_SCHEMAS)
+                _assert_schemas_readable(conn, CROSS_SCHEMAS)  # cross set is fine -> no raise
+    finally:
+        eng.dispose()
+
+
+def test_generate_under_real_roles(pg_session):
+    """End to end with the real split: c3 on c3_app, c1/c2/c4 on c3_reader — no raise.
+
+    The USAGE boundary is what makes the split necessary (proven in the role-boundary test). Here
+    we prove ``generate`` runs under the two real roles without raising. Table *content* for c3 is
+    only visible when c3_app also holds SELECT on its tables — true on RDS (c3_app owns them),
+    but not on the compose/CI DB where the superuser owns them. So assert the c3 postgres entities
+    only when c3_app actually has that SELECT; always assert the Mongo entities merge.
+    """
+    eng = _engine()
+    try:
+        app_conn = eng.connect()
+        reader_conn = eng.connect()
+        try:
             try:
-                conn.execute(text("SET ROLE c3_reader"))
-            except Exception:
-                pytest.skip("cannot SET ROLE c3_reader on this connection")
-            usable = conn.execute(text("SELECT has_schema_privilege('c3', 'USAGE')")).scalar_one()
-            if usable:
-                pytest.skip("c3_reader can read schema c3 here; no unreadable case to assert")
-            with pytest.raises(SchemaUnreadable):
-                dictionary_service.generate(conn, "it-unreadable")
+                app_conn.execute(text("SET ROLE c3_app"))
+                reader_conn.execute(text("SET ROLE c3_reader"))
+            except ProgrammingError as exc:
+                pytest.skip(f"cannot SET ROLE on this connection: {type(exc.orig).__name__}")
+
+            # generate must not raise under the correct role split.
+            doc = dictionary_service.generate(app_conn, reader_conn, "it-roles")
+
+            # Mongo entities are always merged (independent of Postgres role).
+            assert _entity(doc, "activity_patterns") is not None
+
+            # c3 table content appears only if c3_app can SELECT its tables (RDS ownership); on
+            # the compose/CI DB the superuser owns them, so c3_app sees the schema but no columns.
+            c3_selectable = app_conn.execute(
+                text("SELECT has_table_privilege('c3.ml_models', 'SELECT')")
+            ).scalar_one()
+            if c3_selectable:
+                assert _entity(doc, "ml_models") is not None
+                present = {e["schema_name"] for e in doc["entities"] if e["store"] == "postgres"}
+                assert "c3" in present
+        finally:
+            with contextlib.suppress(Exception):
+                app_conn.close()
+            with contextlib.suppress(Exception):
+                reader_conn.close()
     finally:
         eng.dispose()
 

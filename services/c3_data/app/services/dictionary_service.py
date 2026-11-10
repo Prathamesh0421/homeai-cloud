@@ -1,15 +1,22 @@
 """Generate the data dictionary from the live schema (C3-13, docs §4.7, Rev4 §6).
 
 The Postgres side is reflected from ``information_schema.columns`` across all four schemas
-(c1..c4) through the read-only role, so a migration that adds a column shows up automatically
-(no hand-kept list to drift). MongoDB has no ``information_schema``; its C3-owned collection
-shapes are declared in ``app.dictionary.mongo_schemas`` and merged in. Field descriptions come
-from ``app.dictionary.descriptions``.
+(c1..c4), so a migration that adds a column shows up automatically (no hand-kept list to
+drift). MongoDB has no ``information_schema``; its C3-owned collection shapes are declared in
+``app.dictionary.mongo_schemas`` and merged in. Field descriptions come from
+``app.dictionary.descriptions``.
+
+No single non-superuser role can read all four schemas: ``c3_app`` owns schema c3 but has no
+USAGE on c1/c2/c4, while ``c3_reader`` has USAGE on c1/c2/c4 but none on c3 (``init.sql`` grants
+them that way on purpose, and we do not change it). So the generator reflects each subset on the
+role that is granted it: schema c3 on the ``c3_app`` connection, and c1/c2/c4 on the
+``c3_reader`` connection. Neither helper is ever called with a schema its connection cannot USE.
 
 Fail-closed (mirrors ``record_query._safe_c1_query``): a schema whose tables are simply absent
-(C1 has not shipped) contributes nothing — that is the documented empty state, not an error. A
-read denied by a missing grant (``42501``) is re-raised loudly, never swallowed, so a reader-
-role regression surfaces instead of silently producing a short dictionary forever.
+(C1 has not shipped) contributes nothing — the documented empty state, not an error. An
+existing-but-unreadable schema (``_assert_schemas_readable``) or a read denied by a missing
+grant (``42501``) is re-raised loudly, never swallowed, so a grant regression surfaces instead
+of silently producing a short dictionary forever.
 """
 
 from __future__ import annotations
@@ -30,15 +37,18 @@ logger = logging.getLogger("c3.dictionary")
 
 # The four component schemas and the component that owns each.
 SCHEMA_OWNER = {"c1": "c1", "c2": "c2", "c3": "c3", "c4": "c4"}
-SCHEMAS = list(SCHEMA_OWNER)
+# Which connection reflects which schemas: c3 on the c3_app connection (owns it), c1/c2/c4 on
+# the c3_reader connection (granted USAGE/SELECT in init.sql). No role can USE all four.
+OWN_SCHEMAS = ["c3"]
+CROSS_SCHEMAS = ["c1", "c2", "c4"]
 
 
 class SchemaUnreadable(Exception):
     """A schema exists but the connecting role cannot read it — fail loud, don't under-report."""
 
 
-def _assert_schemas_readable(conn: Connection) -> None:
-    """Loud fail-closed guard for the information_schema blind spot.
+def _assert_schemas_readable(conn: Connection, schemas: list[str]) -> None:
+    """Loud fail-closed guard for the information_schema blind spot, over ``schemas``.
 
     ``information_schema.columns`` silently omits rows the connecting role may not see, so an
     unreadable schema looks identical to an absent one. That is exactly the drift the dictionary
@@ -47,13 +57,16 @@ def _assert_schemas_readable(conn: Connection) -> None:
     ``information_schema.schemata`` which itself hides schemas the role lacks privilege on) and
     then test USAGE: a schema that EXISTS but the role cannot USE raises. A schema that does not
     exist (e.g. c1 pre-ship) is the legitimate absent-as-empty case and is left alone.
+
+    Called only with the schema subset the connection's role is granted; a subset that includes
+    a schema the role cannot USE is the regression this guard is meant to catch.
     """
     rows = conn.execute(
         text(
             "SELECT n.nspname, has_schema_privilege(n.nspname, 'USAGE') AS usable "
             "FROM pg_catalog.pg_namespace n WHERE n.nspname = ANY(:schemas)"
         ),
-        {"schemas": SCHEMAS},
+        {"schemas": schemas},
     ).all()
     unreadable = [name for name, usable in rows if not usable]
     if unreadable:
@@ -66,13 +79,13 @@ def _assert_schemas_readable(conn: Connection) -> None:
         )
 
 
-def _pg_entities(conn: Connection) -> list[dict]:
-    """Reflect every table in schemas c1..c4 from information_schema.columns.
+def _pg_entities(conn: Connection, schemas: list[str]) -> list[dict]:
+    """Reflect every table in ``schemas`` from information_schema.columns on ``conn``.
 
     Returns one entity dict per (schema, table). A schema with no tables (e.g. c1 pre-ship)
     contributes nothing. An existing-but-unreadable schema or a missing grant re-raises (loud).
     """
-    _assert_schemas_readable(conn)
+    _assert_schemas_readable(conn, schemas)
     try:
         rows = (
             conn.execute(
@@ -83,7 +96,7 @@ def _pg_entities(conn: Connection) -> list[dict]:
                     "WHERE table_schema = ANY(:schemas) "
                     "ORDER BY table_schema, table_name, ordinal_position"
                 ),
-                {"schemas": SCHEMAS},
+                {"schemas": schemas},
             )
             .mappings()
             .all()
@@ -150,19 +163,28 @@ def _mongo_entities() -> list[dict]:
     return entities
 
 
-def generate(conn: Connection, version: str, now: datetime | None = None) -> dict:
+def generate(
+    app_conn: Connection,
+    reader_conn: Connection,
+    version: str,
+    now: datetime | None = None,
+) -> dict:
     """Build the full dictionary document for ``version`` from the live schema + Mongo shapes.
 
-    ``conn`` is C3's own (c3_app) connection: it owns schema c3, and on RDS is granted SELECT on
-    the other components' schemas (docs §11). ``information_schema`` returns only the columns the
-    connecting role may see, so a role that cannot read a schema would silently contribute
-    nothing; ``_assert_schemas_readable`` guards that (an existing-but-unreadable schema raises).
+    Reflects schema c3 on ``app_conn`` (the c3_app connection, which owns c3) and c1/c2/c4 on
+    ``reader_conn`` (the c3_reader connection, which is granted USAGE/SELECT on them). No single
+    role can USE all four schemas, so each subset is read on the role granted it;
+    ``_assert_schemas_readable`` still fails loud if a subset hits a schema its role cannot use.
 
     ``generated_at`` is stored as an ISO-8601 ``Z`` string: the document lands in a JSONB column
     and a bare ``datetime`` is not JSON-serialisable.
     """
     now = (now or datetime.now(UTC)).astimezone(UTC)
-    entities = _pg_entities(conn) + _mongo_entities()
+    entities = (
+        _pg_entities(app_conn, OWN_SCHEMAS)  # c3 via c3_app (owns it)
+        + _pg_entities(reader_conn, CROSS_SCHEMAS)  # c1/c2/c4 via c3_reader (granted)
+        + _mongo_entities()
+    )
     # Stable order: by owner component, then store, then entity name.
     entities.sort(key=lambda e: (e["owner_component"], e["store"], e["name"]))
     generated_at = now.isoformat().replace("+00:00", "Z")
