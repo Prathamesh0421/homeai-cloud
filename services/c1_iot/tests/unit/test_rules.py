@@ -1,13 +1,31 @@
-"""Pure rules: S3 key layout (plan §2.3) and the media_events document (§4.1)."""
+"""Pure rules: connectivity rows (plan §4.2), S3 key layout (§2.3), media_events document (§4.1)."""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
+import pytest
 from app.gateways.s3_media_gateway import CONTENT_TYPES, build_key
 from app.repositories.media_event_repo import new_media_event
+from app.services.connectivity import derive
 
 NOW = datetime(2026, 11, 10, 18, 0, tzinfo=UTC)
+
+
+@pytest.mark.parametrize(
+    ("last_clip_ago", "status", "expected"),
+    [
+        (None, "provisioned", ("unknown", "provisioned")),
+        (timedelta(seconds=10), "provisioned", ("online", "active")),
+        (timedelta(seconds=30), "inactive", ("online", "active")),  # boundary: <= interval
+        (timedelta(seconds=10), "error", ("online", "error")),
+        (timedelta(seconds=31), "active", ("offline", "inactive")),
+        (timedelta(days=2), "error", ("offline", "error")),
+    ],
+)
+def test_derive_connectivity(last_clip_ago, status, expected):
+    last = NOW - last_clip_ago if last_clip_ago is not None else None
+    assert derive(last_clip_at=last, capture_interval_s=30, status=status, now=NOW) == expected
 
 
 def test_s3_key_layout():

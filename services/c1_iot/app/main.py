@@ -16,6 +16,7 @@ from homeai_common.logging import RequestIdMiddleware, configure_logging
 from app.api import clips, feeds, houses, ingest
 from app.db.mongo_indexes import MEDIA_EVENTS, ensure_indexes
 from app.gateways.s3_media_gateway import S3MediaGateway
+from app.jobs.connectivity_monitor import start_scheduler
 from app.settings import SERVICE_NAME, Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -53,9 +54,14 @@ def create_app(
         if settings.database_url:
             db.configure_db(settings.database_url)
         configure_jwks(settings.jwks_url)
+        scheduler = None
         if settings.jobs_enabled:
             _ensure_mongo_indexes(settings)
+            if settings.database_url:
+                scheduler = start_scheduler(settings.connectivity_interval_s)
         yield
+        if scheduler is not None:
+            scheduler.shutdown(wait=True)  # let a running pass finish before the engines go
         db.dispose_db()
         mongo.close_mongo()
 
