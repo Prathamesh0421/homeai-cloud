@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -147,3 +147,12 @@ demo-c2-reset:
 baseline-run:
 	$(COMPOSE_PROD) run --rm --no-deps -T -v $(CURDIR):/workspace:ro -e PYTHONPATH=/app \
 		c3-data python /workspace/scripts/demo/c3_baseline.py $(ARGS)
+
+# Run the C3 integrity check on demand (C3-12). The nightly scheduler runs this across all
+# tenants; this trigger lets demo prep run it without waiting for the clock. It records an
+# integrity_reports row and prints a findings-by-severity summary.
+#   make integrity-run                        (all tenants, records a report)
+#   make integrity-run ARGS="--tenant-id <uuid>"   (one tenant, no report row)
+integrity-run:
+	$(COMPOSE_PROD) run --rm --no-deps -T -v $(CURDIR):/workspace:ro -e PYTHONPATH=/app \
+		c3-data python /workspace/scripts/demo/c3_integrity.py $(ARGS)

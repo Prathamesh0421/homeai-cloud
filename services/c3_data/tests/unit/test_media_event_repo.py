@@ -63,3 +63,16 @@ def test_requeue_resets_failed_clip():
     flt, update = col.updates[-1]
     assert flt == {"_id": "m1", "status": "failed"}
     assert update["$set"] == {"status": "queued", "attempts": 0, "error": None}
+
+
+def test_mark_analyzed_clears_claim_fields():
+    # C3-12 §5: an analyzed clip must not keep a stale claimed_at/worker_id, which the
+    # integrity check would otherwise read as a half-finished claim.
+    col = _FakeCollection()
+    repo = MediaEventRepo(col)
+    repo.mark_analyzed("m1", detection_id="d1", handoff_status="done")
+    flt, update = col.updates[-1]
+    assert flt == {"_id": "m1"}
+    assert update["$set"]["status"] == "analyzed"
+    assert update["$set"]["detection_id"] == "d1"
+    assert update["$unset"] == {"claimed_at": "", "worker_id": ""}

@@ -33,6 +33,7 @@ from app.repositories.heartbeat_repo import HeartbeatRepo
 from app.repositories.media_event_repo import COLLECTION as EV_COLLECTION
 from app.repositories.media_event_repo import MediaEventRepo
 from app.repositories.ml_model_repo import MlModelRepo
+from app.scheduler import start_scheduler
 from app.services.activity_service import build_rollup
 from app.services.classification_pipeline import ClassificationPipeline, DetectionExistsError
 from app.settings import SERVICE_NAME, Settings, get_settings
@@ -203,9 +204,15 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_stop)
     signal.signal(signal.SIGINT, _handle_stop)
 
+    # The one C3 scheduler (baseline + integrity) runs in the worker process (C3-12).
+    scheduler = start_scheduler(settings)
+
     try:
         worker.run()
     finally:
+        if scheduler is not None:
+            with contextlib.suppress(Exception):
+                scheduler.shutdown(wait=False)
         db.dispose_db()
         mongo.close_mongo()
 
