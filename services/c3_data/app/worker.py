@@ -33,6 +33,7 @@ from app.repositories.heartbeat_repo import HeartbeatRepo
 from app.repositories.media_event_repo import COLLECTION as EV_COLLECTION
 from app.repositories.media_event_repo import MediaEventRepo
 from app.repositories.ml_model_repo import MlModelRepo
+from app.services.activity_service import build_rollup
 from app.services.classification_pipeline import ClassificationPipeline, DetectionExistsError
 from app.settings import SERVICE_NAME, Settings, get_settings
 
@@ -76,6 +77,7 @@ class Worker:
             detection_repo=self.detections,
             media_event_repo=self.events,
             on_detection=build_handoff(settings),  # HANDOFF_MODE: log or call C2
+            on_rollup=build_rollup(mdb),  # idempotent activity rollup (C3-11)
         )
 
         self.processed = 0

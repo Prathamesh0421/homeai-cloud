@@ -195,13 +195,17 @@ class ClassificationPipeline:
 
         An earlier attempt saved the detection (step 6) and then failed or crashed before the
         clip was marked analyzed, so it came back to the queue. Re-classifying would only hit
-        the dedupe, so finish the run instead: hand off to C2 again (idempotent on
-        ``detection_id``, so a repeat is safe) and mark the clip analyzed. The activity rollup
-        is not repeated. Returns the stored detection, or None if there is none.
+        the dedupe, so finish the run instead: roll up activity (idempotent by detection_id, so
+        it counts exactly once whether or not the first attempt reached the rollup), hand off to
+        C2 again (idempotent on ``detection_id``), and mark the clip analyzed. Returns the stored
+        detection, or None if there is none.
         """
         detection = self._detections.get_by_media(ev["_id"])
         if detection is None:
             return None
+        # Idempotent: if the first attempt already rolled this detection up, this is a no-op; if
+        # it crashed before the rollup, this applies it exactly once.
+        self._on_rollup(detection)
         handoff_status = self._on_detection(detection)
         self._events.mark_analyzed(ev["_id"], detection["_id"], handoff_status)
         return detection
