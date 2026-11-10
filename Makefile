@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -11,6 +11,7 @@ help:
 	@echo "  make test-common pytest for libs/homeai_common only"
 	@echo "  make test-c4     pytest for one service (test-c1 .. test-c4)"
 	@echo "  make test-c2-full  C2 tests + coverage against real Postgres/Mongo/LocalStack containers"
+	@echo "  make test-c1-full  C1 tests + coverage against real Postgres/Mongo/LocalStack containers"
 	@echo "  make web         run Vite dev server (web/)"
 	@echo "  make migrate     run Alembic for every service (once they exist)"
 
@@ -38,6 +39,10 @@ test:
 # store-backed tests when no database is configured.
 test-c2-full:
 	PYTHON=$(PYTHON) scripts/test_c2.sh $(ARGS)
+
+# Same for C1 (its own containers on other spare ports).
+test-c1-full:
+	PYTHON=$(PYTHON) scripts/test_c1.sh $(ARGS)
 
 test-common:
 	cd libs/homeai_common && $(PYTEST) -q
@@ -91,6 +96,21 @@ seed-c4-docker:
 # In the stack: docker compose -f infra/docker-compose.yml exec c2-alerts python -m app.seed
 seed-c2:
 	cd services/c2_alerts && alembic upgrade head && $(PYTHON) -m app.seed
+
+# C1's part of the seed: houses, rooms and feeds with the fixed IDs of scripts/seed_ids.py.
+# Migrations first; idempotent (as c1_app, DATABASE_URL_C1). Run it before seed-c2/seed-c4's
+# house references are used (C2 answers 503 until c1.houses exists).
+seed-c1:
+	cd services/c1_iot && alembic upgrade head && PYTHONPATH=$(CURDIR) $(PYTHON) -m app.seed
+
+# The same inside the c1-iot image on EC2 (host has no Python), repo mounted for seed_ids.py.
+seed-c1-docker:
+	$(COMPOSE_PROD) exec -T c1-iot alembic upgrade head
+	$(COMPOSE_PROD) run --rm --no-deps \
+		-v $(CURDIR):/workspace:ro \
+		-e PYTHONPATH=/workspace \
+		-w /app \
+		c1-iot python -m app.seed
 
 # --- AWS / EC2 deploy (C4-16) ---------------------------------------------
 # Render a production .env from the provisioned AWS resources. Run on the EC2
