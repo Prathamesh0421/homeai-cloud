@@ -81,7 +81,11 @@ class ActivityRepo:
         )
 
         # Conditionally count: only when this detection_id is not already folded in. The filter
-        # on counted != did makes a replay match nothing, so hours[h] is incremented exactly once.
+        # on counted != did makes a replay match nothing, so hours[h] is incremented exactly
+        # once. This is a single-document atomic update, so a two-worker race on the same clip is
+        # safe (one wins the conditional, the other matches nothing) — the concurrency test is
+        # therefore sequential and still representative. ``counted`` grows by one entry per
+        # distinct detection per day bucket (bounded by a day's clips; demo-acceptable).
         res = self.collection.update_one(
             {"_id": bid, "counted": {"$ne": did}},
             {
@@ -124,6 +128,10 @@ class ActivityRepo:
         mean = [0.0] * 24
         std = [0.0] * 24
         if n_days:
+            # Divide by the number of days that HAVE a bucket, i.e. "average per active day",
+            # not per calendar day: a day with no activity has no document and is excluded.
+            # Deliberate for the demo (a house that is away for a week should not drag the mean
+            # to zero and flag normal activity as anomalous on return).
             for h in range(24):
                 vals = [doc.get("hours", [0] * 24)[h] for doc in history]
                 m = sum(vals) / n_days

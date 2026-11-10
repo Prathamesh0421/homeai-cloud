@@ -226,3 +226,74 @@ def test_run_baseline_job_scores_todays_pairs(one_col_db):
     assert updated == 1
     doc = r.get(HOUSE, ROOM, "2026-07-01")
     assert doc["baseline_mean"][14] == pytest.approx(2.0)
+
+
+def test_baseline_demo_trigger_runs_the_job(monkeypatch):
+    """1a: the on-demand trigger (scripts/demo/c3_baseline.py main) runs run_baseline_job.
+
+    The script reads MONGO_URL_C3 and operates on the real 'activity_patterns' collection, so we
+    seed there directly (not the tracking fixture's randomized collection), run main(), and
+    assert the baseline was populated. Clean up by this test's tenant so the shared db is tidy.
+    """
+    import importlib.util
+    import os
+    from pathlib import Path
+
+    from homeai_common.mongo import get_mongo_db
+
+    mongo_url = os.environ.get("MONGO_URL_C3")
+    if not mongo_url:
+        pytest.skip("MONGO_URL_C3 not set")
+
+    real = get_mongo_db(mongo_url)["activity_patterns"]
+    r = ActivityRepo(real)
+    now = datetime.now(UTC)
+    tenant = f"baseline-trigger-{uuid.uuid4().hex[:8]}"
+
+    def _det(when):
+        d = _detection(when=when, tenant=tenant)
+        return d
+
+    try:
+        # >= MIN_BASELINE_DAYS of trailing history plus today's bucket, in the real collection.
+        for day in range(1, MIN_BASELINE_DAYS + 2):
+            past = now - timedelta(days=day)
+            hours = [0] * 24
+            hours[9] = 2
+            real.replace_one(
+                {"_id": f"{HOUSE}:{ROOM}:{past:%Y-%m-%d}"},
+                {
+                    "_id": f"{HOUSE}:{ROOM}:{past:%Y-%m-%d}",
+                    "tenant_id": tenant,
+                    "house_id": HOUSE,
+                    "room_id": ROOM,
+                    "date": f"{past:%Y-%m-%d}",
+                    "hours": hours,
+                    "counted": [],
+                },
+                upsert=True,
+            )
+        r.rollup(_det(now.replace(hour=9, minute=0, second=0, microsecond=0)))
+
+        import app.settings as app_settings
+
+        app_settings.get_settings.cache_clear()
+        monkeypatch.setenv("MONGO_URL_C3", mongo_url)
+
+        # repo root: integration -> tests -> c3_data -> services -> <root>
+        path = Path(__file__).resolve().parents[4] / "scripts" / "demo" / "c3_baseline.py"
+        spec = importlib.util.spec_from_file_location("c3_baseline_script", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        assert module.main([]) == 0
+
+        today = f"{now:%Y-%m-%d}"
+        doc = real.find_one({"_id": f"{HOUSE}:{ROOM}:{today}"})
+        assert doc is not None
+        assert doc.get("baseline_mean") is not None  # the trigger populated the baseline
+        assert doc["baseline_mean"][9] == pytest.approx(2.0)
+    finally:
+        real.delete_many({"tenant_id": tenant})
+        import app.settings as app_settings
+
+        app_settings.get_settings.cache_clear()
