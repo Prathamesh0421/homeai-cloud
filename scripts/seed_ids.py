@@ -10,6 +10,7 @@ the docs refer to them. Pattern: the first block says what it is, the last block
 | room     | 33333333-0000-0000-0000-00000000HHRR     | Maple Bathroom = ...a104                 |
 | user     | 44444444-0000-0000-0000-0000000000NN     | ops@homeai.test = ...0001                |
 | contact  | 55555555-0000-0000-0000-00000000HHNN     | Maple contact 1 = ...a101                |
+| feed     | 66666666-0000-0000-0000-00000000HHFF     | Maple Kitchen Mic = ...a101              |
 
 Change an ID only together with every component's seed and tests.
 """
@@ -38,6 +39,67 @@ def room_id(house: str, room: str) -> str:
 
 
 ROOMS = {(house, name): room_id(house, name) for house in HOUSES for name in ROOM_NAMES}
+
+# C1 camera feeds: alias -> (feed_id, house alias, room name or None, feed name, media_kind,
+# is_enabled). Pattern 66666666-0000-0000-0000-00000000HHFF (house code, feed number).
+FEEDS = {
+    "maple_kitchen_mic": (
+        "66666666-0000-0000-0000-00000000a101",
+        "maple",
+        "Kitchen",
+        "Kitchen Mic",
+        "audio",
+        True,
+    ),
+    "maple_front_door_cam": (
+        "66666666-0000-0000-0000-00000000a102",
+        "maple",
+        "Entryway",
+        "Front Door Cam",
+        "video",
+        True,
+    ),
+    "maple_garage_cam": (
+        "66666666-0000-0000-0000-00000000a103",
+        "maple",
+        "Entryway",
+        "Garage Cam",
+        "video",
+        True,
+    ),
+    "maple_nursery_mic": (
+        "66666666-0000-0000-0000-00000000a104",
+        "maple",
+        None,
+        "Nursery Mic",
+        "audio",
+        False,
+    ),
+    "maple_bathroom_mic": (
+        "66666666-0000-0000-0000-00000000a105",
+        "maple",
+        "Bathroom",
+        "Bathroom Mic",
+        "audio",
+        True,
+    ),
+    "oak_kitchen_mic": (
+        "66666666-0000-0000-0000-00000000a201",
+        "oak",
+        "Kitchen",
+        "Kitchen Mic",
+        "audio",
+        True,
+    ),
+    "pine_kitchen_mic": (
+        "66666666-0000-0000-0000-00000000b101",
+        "pine",
+        "Kitchen",
+        "Kitchen Mic",
+        "audio",
+        True,
+    ),
+}
 
 # email -> (user_id, role, tenant alias or None for platform staff, house aliases)
 USERS = {
