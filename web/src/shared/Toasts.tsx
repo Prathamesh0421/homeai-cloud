@@ -56,7 +56,9 @@ const TONE_CLASSES: Record<ToastTone, string> = {
 export function ToastViewport() {
   const { toasts, dismiss } = useToasts();
   return (
-    <div className="fixed bottom-4 right-4 z-50 flex w-80 flex-col gap-2">
+    // Above every overlay (side panels, dialogs and menus are z-50): a toast raised while a
+    // panel is open, e.g. a 409 from the rule form, must still be seen.
+    <div className="fixed bottom-4 right-4 z-[100] flex w-80 flex-col gap-2">
       {toasts.map((t) => (
         <div
           key={t.id}
