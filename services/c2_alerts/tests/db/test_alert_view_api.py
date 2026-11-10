@@ -5,7 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from app.api.deps import get_clock, get_detection_reader, get_house_reader, get_session
+from app.api.deps import (
+    get_clip_reader,
+    get_clock,
+    get_detection_reader,
+    get_house_reader,
+    get_session,
+)
 from app.gateways.types import Detection
 from app.main import create_app
 from app.models.orm import Notification
@@ -25,7 +31,7 @@ from tests.factories import (
     make_rule,
     uid,
 )
-from tests.fakes import FakeDetectionReader, FakeHouseReader
+from tests.fakes import FakeClipReader, FakeDetectionReader, FakeHouseReader
 
 VIEW = "/api/v1/alert-view"
 TRIGGERED = datetime(2026, 10, 24, 23, 10, tzinfo=UTC)
@@ -50,6 +56,9 @@ def make_client(settings, session, now):
             [MAPLE], [BATH, KITCHEN]
         )
         app.dependency_overrides[get_detection_reader] = lambda: detections
+        clips = FakeClipReader()  # no clip in C1 unless a test adds one
+        app.state.test_clips = clips
+        app.dependency_overrides[get_clip_reader] = lambda: clips
         app.dependency_overrides[get_clock] = lambda: lambda: now["value"]
         c = TestClient(app, raise_server_exceptions=False)
         c.__enter__()
@@ -120,6 +129,30 @@ def test_view_returns_only_the_public_fields(client, alert):
         CONTACT,
     ):
         assert leak not in r.text
+
+
+def test_view_plays_the_clip_from_c1(client, alert):
+    """C2-11: the presigned URL C1 gives C2 (service token) for the alert's clip."""
+    url = "https://homeai-bucket.s3.amazonaws.com/clip.wav?X-Amz-Signature=abc"
+    client.app.state.test_clips.urls[alert.media_id] = url
+    r = client.get(f"{VIEW}/{token_for(client, alert.alert_id)}")
+    assert r.status_code == 200, r.text
+    assert r.json()["data"]["clip_url"] == url
+    assert client.app.state.test_clips.calls == [alert.media_id]
+
+
+def test_view_without_a_clip_still_answers(client, alert):
+    """No clip in C1 (or C1 down): the page shows the alert without a recording."""
+    r = client.get(f"{VIEW}/{token_for(client, alert.alert_id)}")
+    assert r.status_code == 200
+    assert r.json()["data"]["clip_url"] is None
+
+
+def test_no_c1_lookup_for_a_bad_link(client, alert, now):
+    now["value"] = TRIGGERED + timedelta(hours=25)  # expired
+    assert client.get(f"{VIEW}/{token_for(client, alert.alert_id)}").status_code == 401
+    assert client.get(f"{VIEW}/not-a-token").status_code == 404
+    assert client.app.state.test_clips.calls == []
 
 
 def test_view_shows_the_current_status(client, alert, session):

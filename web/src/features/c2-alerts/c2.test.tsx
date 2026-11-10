@@ -280,7 +280,42 @@ describe("AlertDetailPage", () => {
     expect(screen.getByText("Raised")).toBeInTheDocument();
     expect(screen.getByText("alice.maple@example.test")).toBeInTheDocument();
     expect(screen.getByText("Pending confirmation (try 1/3)")).toBeInTheDocument();
-    expect(screen.getByText("Clip playback is not available yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Play recording" })).toBeInTheDocument();
+  });
+
+  it("plays the clip from C1 with the user's own token (C2-11)", async () => {
+    const url = "https://bucket.s3.amazonaws.com/m1.wav?X-Amz-Signature=x";
+    const { calls } = stubFetch({
+      "GET /api/v1/alerts/a1": { body: { data: detail() } },
+      "GET /api/v1/clips/m1/playback-url": { body: { data: { url, expires_at: "2026-10-24T23:25:00Z" } } },
+    });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Play recording" }));
+    expect(await screen.findByLabelText("Alert recording")).toHaveAttribute("src", url);
+    const clip = calls.find((c) => c.url.startsWith("/api/v1/clips/"))!;
+    expect(clip.headers.Authorization).toMatch(/^Bearer h\./);
+  });
+
+  it("says when C1 has no recording for the alert", async () => {
+    stubFetch({
+      "GET /api/v1/alerts/a1": { body: { data: detail() } },
+      "GET /api/v1/clips/m1/playback-url": { status: 404, body: { error: { code: "not_found", message: "clip not found" } } },
+    });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Play recording" }));
+    expect(await screen.findByText("The recording is not available.")).toBeInTheDocument();
+  });
+
+  it("a 401 from C1 does not sign the user out, and Play can be tried again", async () => {
+    stubFetch({
+      "GET /api/v1/alerts/a1": { body: { data: detail() } },
+      "GET /api/v1/clips/m1/playback-url": { status: 401, body: { error: { code: "unauthorized", message: "x" } } },
+    });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Play recording" }));
+    expect(await screen.findByText("Could not load the recording. Try again.")).toBeInTheDocument();
+    expect(sessionStorage.getItem("homeai.token")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Play recording" })).toBeEnabled();
   });
 
   it("enables only the allowed actions (resolve needs acknowledge first)", async () => {

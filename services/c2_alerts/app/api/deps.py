@@ -16,6 +16,7 @@ from app.gateways.c4_settings_gateway import C4SettingsGateway
 from app.gateways.detection_gateway import COLLECTION, MongoDetectionGateway
 from app.gateways.notifier import Notifier
 from app.gateways.types import (
+    ClipUrlReader,
     DependencyUnavailableError,
     DetectionReader,
     HouseReader,
@@ -58,6 +59,11 @@ def get_detection_reader(settings: Settings = Depends(get_app_settings)) -> Dete
 def get_demo_links(request: Request, settings: Settings = Depends(get_app_settings)):
     """Signed-link service for ``view_link`` in alert detail, only when DEMO_MODE=1."""
     return request.app.state.links if settings.demo_mode else None
+
+
+def get_clip_reader(request: Request) -> ClipUrlReader | None:
+    """C1 playback URLs with C2's service token (None without a client secret)."""
+    return request.app.state.clips
 
 
 def get_notifier(request: Request) -> Notifier:

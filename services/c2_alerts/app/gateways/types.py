@@ -155,3 +155,9 @@ class HouseReader(Protocol):
 
 class DetectionReader(Protocol):
     def get(self, detection_id: str) -> Detection | None: ...
+
+
+class ClipUrlReader(Protocol):
+    def playback_url(self, media_id: str) -> str | None:
+        """C1's presigned playback URL, or ``None`` (no clip, or C1 unavailable)."""
+        ...

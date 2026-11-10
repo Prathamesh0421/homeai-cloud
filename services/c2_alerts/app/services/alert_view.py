@@ -7,6 +7,7 @@ from datetime import datetime
 
 from homeai_common.errors import ApiError
 
+from app.gateways.types import ClipUrlReader
 from app.repositories.scope import Scope
 from app.schemas.alert_view import AlertView, AlertViewLabel
 from app.services.alert_service import AlertService
@@ -22,6 +23,7 @@ def _not_found() -> ApiError:
 class AlertViewService:
     links: SignedLinkService
     alerts: AlertService
+    clips: ClipUrlReader | None = None  # C1 playback URLs (C2-11); None: no clip shown
 
     def view(self, token: str, now: datetime) -> AlertView:
         try:
@@ -48,7 +50,6 @@ class AlertViewService:
             labels=[
                 AlertViewLabel(label=x.label, confidence=x.confidence) for x in evidence.labels
             ],
-            # STANDIN(C1-07): presigned clip URL from C1 GET /clips/{media_id}/playback-url (C2-11).
-            clip_url=None,
+            clip_url=self.clips.playback_url(alert.media_id) if self.clips else None,
             expires_at=claims.expires_at,
         )

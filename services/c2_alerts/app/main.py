@@ -14,6 +14,7 @@ from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
 from app.api import alert_view, alerts, rules
+from app.gateways.c1_clip_client import make_clip_client
 from app.gateways.notifier import LogNotifier, Notifier
 from app.gateways.secrets_gateway import AlertViewKeyProvider
 from app.gateways.sns_gateway import SnsGateway
@@ -91,6 +92,7 @@ def create_app(
         public_base_url=settings.public_base_url,
     )
     app.state.notifier = make_notifier(settings)
+    app.state.clips = make_clip_client(settings)
     app.state.jobs = JobRunner(notifier=app.state.notifier, links=app.state.links)
     app.state.alert_view_limiter = SlidingWindowLimiter(
         settings.alert_view_rate_limit_per_min, window_s=60
