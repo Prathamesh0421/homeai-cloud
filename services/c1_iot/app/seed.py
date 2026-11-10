@@ -23,9 +23,9 @@ from app.settings import get_settings
 
 # scripts/seed_ids.py lives at the repo root: importable from a checkout (parents[3]) or, in the
 # container, through PYTHONPATH=/workspace set by the Makefile.
-_ROOT = Path(__file__).resolve().parents[3]
-if str(_ROOT) not in sys.path:
-    sys.path.insert(0, str(_ROOT))
+_PARENTS = Path(__file__).resolve().parents
+if len(_PARENTS) > 3 and str(_PARENTS[3]) not in sys.path:  # checkout: repo root
+    sys.path.insert(0, str(_PARENTS[3]))
 
 from scripts.seed_ids import FEEDS, HOUSES, ROOM_NAMES, ROOMS, TENANTS, USERS  # noqa: E402
 

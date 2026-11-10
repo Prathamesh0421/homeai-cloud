@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -107,7 +107,7 @@ seed-c1:
 seed-c1-docker:
 	$(COMPOSE_PROD) exec -T c1-iot alembic upgrade head
 	$(COMPOSE_PROD) run --rm --no-deps \
-		-v $(CURDIR):/workspace:ro \
+		-v "$(CURDIR)":/workspace:ro \
 		-e PYTHONPATH=/workspace \
 		-w /app \
 		c1-iot python -m app.seed
@@ -164,6 +164,14 @@ demo-c2-quiet-hours:
 
 demo-c2-reset:
 	$(COMPOSE_PROD) exec -T c2-alerts python -m app.demo_reset $(ARGS)
+
+# --- C1 demo helpers (C1 plan §10.1) --------------------------------------------------------
+# Device simulator in the c1-iot image on the compose network (host has no Python), repo mounted,
+# SERVICE_CLIENT_SECRET_DEVICE from the host .env. Ctrl-C stops it; the feed then goes offline.
+#   make demo-c1-sim ARGS="--feed-id 66666666-0000-0000-0000-00000000a101 --interval 5"
+demo-c1-sim:
+	$(COMPOSE_PROD) run --rm --no-deps -v "$(CURDIR)":/workspace:ro -w /workspace \
+		-e HOMEAI_API_URL=http://caddy:80 c1-iot python scripts/device_sim.py $(ARGS)
 
 # --- C3 demo helpers (C3 plan §10) ----------------------------------------------------------
 # Run the activity-baseline job on demand so the Activity chart shows a baseline band and an
