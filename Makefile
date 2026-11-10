@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
+.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim demo-c1-reset deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -172,6 +172,13 @@ demo-c2-reset:
 demo-c1-sim:
 	$(COMPOSE_PROD) run --rm --no-deps -v "$(CURDIR)":/workspace:ro -w /workspace \
 		-e HOMEAI_API_URL=http://caddy:80 c1-iot python scripts/device_sim.py $(ARGS)
+
+# Back to the C1 seed between rehearsals: removes demo houses/rooms/feeds (and their clips),
+# seed feeds back to config v1. Run inside the c1-iot container (repo mounted for seed_ids).
+#   make demo-c1-reset ARGS=--yes
+demo-c1-reset:
+	$(COMPOSE_PROD) run --rm --no-deps -T -v "$(CURDIR)":/workspace:ro -e PYTHONPATH=/workspace \
+		-w /app c1-iot python -m app.demo_reset $(ARGS)
 
 # --- C3 demo helpers (C3 plan §10) ----------------------------------------------------------
 # Run the activity-baseline job on demand so the Activity chart shows a baseline band and an
