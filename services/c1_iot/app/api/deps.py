@@ -14,11 +14,14 @@ from homeai_common import db
 from homeai_common.auth import Principal, current_principal, require_roles
 from homeai_common.errors import ApiError
 from homeai_common.mongo import get_mongo_db
+from pymongo.collection import Collection
 
 from app.db.mongo_indexes import MEDIA_EVENTS
 from app.gateways.s3_media_gateway import MediaStorage
 from app.repositories.media_event_repo import MediaEventRepository
 from app.settings import Settings
+
+AI_DETECTIONS = "ai_detections"
 
 STAFF_ROLES = frozenset({"iot_staff", "cloud_staff"})
 READER_ROLES = frozenset({"house_owner", "iot_staff", "cloud_staff"})
@@ -48,6 +51,22 @@ def get_media_repo(settings: Settings = Depends(get_app_settings)) -> MediaEvent
             503, "dependency_unavailable", "MongoDB is not configured", {"source": "mongo"}
         )
     return MediaEventRepository(get_mongo_db(settings.mongo_url)[MEDIA_EVENTS])
+
+
+def get_media_repo_optional(
+    settings: Settings = Depends(get_app_settings),
+) -> MediaEventRepository | None:
+    """``media_events`` for optional extras (a feed's recent clips); None without Mongo."""
+    if not settings.mongo_url:
+        return None
+    return MediaEventRepository(get_mongo_db(settings.mongo_url)[MEDIA_EVENTS])
+
+
+def get_detections(settings: Settings = Depends(get_app_settings)) -> Collection | None:
+    """C3's ``ai_detections`` (read only, for ``top_label``), or None without Mongo."""
+    if not settings.mongo_url:
+        return None
+    return get_mongo_db(settings.mongo_url)[AI_DETECTIONS]
 
 
 def get_storage(request: Request) -> MediaStorage:

@@ -15,11 +15,13 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import (
     any_user,
+    get_media_repo_optional,
     get_session,
     staff,
     staff_or_scope,
 )
 from app.repositories.feed_repo import FeedFilters
+from app.repositories.media_event_repo import MediaEventRepository
 from app.repositories.scope import Scope
 from app.schemas.common import Connectivity, FeedStatus, MediaKind
 from app.schemas.feed import (
@@ -33,6 +35,7 @@ from app.schemas.feed import (
     FeedStatusUpdate,
     FeedUpdate,
 )
+from app.services.clip_library_service import ClipLibraryService
 from app.services.feed_service import FeedService
 
 router = APIRouter(prefix="/api/v1", tags=["camera feeds"])
@@ -125,8 +128,11 @@ def get_feed(
     feed_id: uuid.UUID,
     principal: Principal = Depends(any_user),
     service: FeedService = Depends(_service),
+    session: Session = Depends(get_session),
+    media: MediaEventRepository | None = Depends(get_media_repo_optional),
 ):
-    return data_response(service.get_feed(str(feed_id), Scope.for_principal(principal)))
+    recent = ClipLibraryService(session, media).recent_for_feed if media else None
+    return data_response(service.get_feed(str(feed_id), Scope.for_principal(principal), recent))
 
 
 @router.patch(

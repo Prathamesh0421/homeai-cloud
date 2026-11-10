@@ -72,7 +72,7 @@ def test_create_feed_validation(api, staff):
     assert dup.json()["error"]["details"][0]["field"] == "name"
 
 
-def test_get_feed_includes_recent_clips(api, staff):
+def test_get_feed_includes_recent_clips(api, staff, media):
     feed = new_feed(api, staff, room_id=ROOM_A1_KITCHEN)
     body = api.get(f"{FEEDS}/{feed['feed_id']}", headers=staff).json()["data"]
     assert body["recent_clips"] == []

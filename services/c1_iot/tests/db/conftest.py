@@ -14,7 +14,9 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from app.api.deps import (
+    get_detections,
     get_media_repo,
+    get_media_repo_optional,
     get_session,
     get_storage,
 )
@@ -38,7 +40,7 @@ from tests.factories import (
     make_house,
     make_room,
 )
-from tests.fakes import FakeMediaRepo, FakeStorage
+from tests.fakes import FakeDetections, FakeMediaRepo, FakeStorage
 
 SERVICE_DIR = Path(__file__).resolve().parents[2]
 # Tests connect as the Postgres superuser (to drop and rebuild schema c1); the reader grants
@@ -134,12 +136,19 @@ def media() -> FakeMediaRepo:
 
 
 @pytest.fixture
-def api(settings, seeded, storage, media) -> Iterator[TestClient]:
+def detections() -> FakeDetections:
+    return FakeDetections([])
+
+
+@pytest.fixture
+def api(settings, seeded, storage, media, detections) -> Iterator[TestClient]:
     """TestClient whose requests share the test's rolled-back session; S3 and Mongo are fakes."""
     app = create_app(settings, checks={})
     app.dependency_overrides[get_session] = lambda: seeded
     app.dependency_overrides[get_storage] = lambda: storage
     app.dependency_overrides[get_media_repo] = lambda: media
+    app.dependency_overrides[get_media_repo_optional] = lambda: media
+    app.dependency_overrides[get_detections] = lambda: detections
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
 
