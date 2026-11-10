@@ -1,8 +1,4 @@
-/** Toasts: a tiny context-based notification system.
- *
- * Pages call `useToasts().push({tone, message})`; the provider renders the
- * stack in a fixed container and auto-dismisses after `ttl` ms.
- */
+/** Toasts: a tiny context-based notification system. */
 
 import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from "react";
 
@@ -51,10 +47,10 @@ export function useToasts(): ToastContextValue {
 }
 
 const TONE_CLASSES: Record<ToastTone, string> = {
-  info: "border-slate-200 bg-white text-slate-700",
-  success: "border-emerald-200 bg-emerald-50 text-emerald-800",
-  warning: "border-amber-200 bg-amber-50 text-amber-800",
-  error: "border-red-200 bg-red-50 text-red-800",
+  info: "border-border bg-surface text-ink",
+  success: "border-success/30 bg-success-soft text-success",
+  warning: "border-warning/30 bg-warning-soft text-warning",
+  error: "border-danger/30 bg-danger-soft text-danger",
 };
 
 export function ToastViewport() {
@@ -64,7 +60,7 @@ export function ToastViewport() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className={`flex items-start justify-between rounded border px-3 py-2 text-sm shadow-sm ${TONE_CLASSES[t.tone]}`}
+          className={`flex items-start justify-between rounded-lg border px-3.5 py-2.5 text-sm shadow-pop ${TONE_CLASSES[t.tone]}`}
           role="status"
         >
           <span>{t.message}</span>

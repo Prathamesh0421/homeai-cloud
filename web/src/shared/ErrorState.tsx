@@ -7,13 +7,13 @@ export interface ErrorStateProps {
 
 export function ErrorState({ message, onRetry }: ErrorStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-red-200 bg-red-50 py-8 text-center">
-      <p className="text-sm font-medium text-red-700">{message}</p>
+    <div className="flex flex-col items-center justify-center rounded-xl border border-danger/30 bg-danger-soft py-8 text-center">
+      <p className="text-sm font-medium text-danger">{message}</p>
       {onRetry && (
         <button
           type="button"
           onClick={onRetry}
-          className="mt-3 rounded border border-red-300 px-3 py-1 text-xs text-red-700 hover:bg-red-100"
+          className="mt-3 rounded-md border border-danger/40 bg-surface px-3 py-1.5 text-xs font-medium text-danger hover:bg-danger-soft"
         >
           Retry
         </button>

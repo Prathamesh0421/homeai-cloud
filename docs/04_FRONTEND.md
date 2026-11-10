@@ -98,3 +98,10 @@ Opening another role's route redirects to the user's landing page; any 401 clear
 ## 7. Build and deploy
 `npm run build` → `web/dist`, copied into the Caddy image at `/srv/web`. Environment-free: the SPA always
 calls relative `/api/v1`, so the same build works locally and on EC2.
+
+## 8. Theme — Cool Ink (light only)
+The UI uses the **Cool Ink** light theme. Source of truth: `web/src/index.css` (CSS variables) →
+`web/tailwind.config.js` (Tailwind color tokens mapped to those vars) → `web/src/shared/tokens.ts`
+(`COLORS`, `CARD`, `INPUT`, severity/status class maps). Use the shared kit and tokens, not raw
+`slate-*`/`bg-white`. No dark mode, no purple, no glow. See `.cursor/rules/homeai-ui.mdc` for the
+full rule (applies to all `web/src/**/*.{tsx,css}` edits).

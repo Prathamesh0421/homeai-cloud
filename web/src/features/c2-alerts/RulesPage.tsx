@@ -1,8 +1,14 @@
-/** Alert Rules (/ops/alert-rules, cloud_staff): tenant defaults and house rules, email sync. */
+/** Alert Rules (/ops/alert-rules, cloud_staff): tenant defaults and house rules, email sync.
+ *  Rules are grouped by tenant with collapsible headers; enable is an inline
+ *  switch; edit opens a side Sheet; min confidence shows a value + tiny bar;
+ *  false-pos column hides when all zeros; "Create tenant defaults" tooltip
+ *  explains the disabled state.
+ */
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import {
   c2Keys,
   createTenantDefaults,
@@ -17,22 +23,39 @@ import {
 import { fetchTenants } from "../../api/c4";
 import { ApiError } from "../../api/http";
 import {
-  Button,
   ConfirmDialog,
-  DataTable,
   EmptyState,
   ErrorState,
   FilterBar,
   Pagination,
   SeverityBadge,
   useToasts,
-  type Column,
 } from "../../shared";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import {
+  Sheet,
+  SheetContent,
+} from "@/components/ui/sheet";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { labelText, percent } from "./format";
 import { RuleForm, UUID } from "./RuleForm";
 
-const PAGE_SIZE = 50;
-const selectClass = "rounded border border-slate-300 bg-white px-2 py-1 text-sm text-slate-700";
+const PAGE_SIZE = 100;
+const selectClass = "rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm text-ink";
+
+/** Min confidence as a value with a tiny bar. */
+function ConfidenceMini({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className="tnum w-8 text-right text-xs text-muted">{percent(value)}</span>
+      <span className="h-1.5 w-12 overflow-hidden rounded-full bg-surface-2">
+        <span className="block h-full rounded-full bg-accent" style={{ width: `${pct}%` }} />
+      </span>
+    </span>
+  );
+}
 
 function filtersFrom(params: URLSearchParams): RuleFilters {
   const enabled = params.get("enabled");
@@ -67,6 +90,7 @@ export default function RulesPage() {
   const [editing, setEditing] = useState<Editing>(null);
   const [disabling, setDisabling] = useState<AlertRule | null>(null);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   // The house filter is typed: it applies only when empty or a whole UUID (the API rejects a
   // partial one with 422), not on every keystroke.
   const [houseText, setHouseText] = useState(params.get("house") ?? "");
@@ -135,121 +159,91 @@ export default function RulesPage() {
     },
   });
 
-  const columns: Column<AlertRule>[] = [
-    {
-      key: "type",
-      header: "Alert type",
-      render: (r) => <span className="font-medium text-slate-800">{r.alert_type_name}</span>,
-      sortValue: (r) => r.alert_type_name,
-    },
-    {
-      key: "scope",
-      header: "Applies to",
-      render: (r) =>
-        r.scope === "tenant_default" ? (
-          <span>Tenant default · {tenantName(r.tenant_id)}</span>
-        ) : (
-          <span title={r.house_id ?? ""}>
-            House {short(r.house_id ?? "")}
-            {r.room_id ? ` · room ${short(r.room_id)}` : " · whole house"}
-          </span>
-        ),
-    },
-    { key: "labels", header: "Labels", render: (r) => r.trigger_labels.map(labelText).join(", ") },
-    {
-      key: "conf",
-      header: "Min conf.",
-      render: (r) => percent(r.min_confidence),
-      sortValue: (r) => r.min_confidence,
-    },
-    {
-      key: "severity",
-      header: "Severity",
-      render: (r) => (
-        <span className="inline-flex items-center gap-1">
-          <SeverityBadge severity={r.effective_severity} />
-          {r.severity === null && <span className="text-xs text-slate-400">default</span>}
-        </span>
-      ),
-    },
-    {
-      key: "enabled",
-      header: "Enabled",
-      render: (r) =>
-        r.is_enabled ? (
-          <span className="text-emerald-700">✓ On</span>
-        ) : (
-          <span className="text-slate-500">✕ Off</span>
-        ),
-    },
-    {
-      key: "fp",
-      header: "False pos. 30 d",
-      render: (r) => r.false_positive_count_30d,
-      sortValue: (r) => r.false_positive_count_30d,
-    },
-    {
-      key: "actions",
-      header: "",
-      render: (r) => (
-        <span className="flex gap-1">
-          <Button variant="ghost" onClick={() => setEditing({ mode: "edit", rule: r })}>
-            Edit
-          </Button>
-          <Button
-            variant="ghost"
-            disabled={toggle.isPending}
-            onClick={() => (r.is_enabled ? setDisabling(r) : toggle.mutate(r))}
-          >
-            {r.is_enabled ? "Disable" : "Enable"}
-          </Button>
-        </span>
-      ),
-    },
-  ];
+  const rows = useMemo(() => rules.data?.data ?? [], [rules.data]);
+  const anyFalsePos = rows.some((r) => r.false_positive_count_30d > 0);
+
+  // Group rules by tenant.
+  const groups = useMemo(() => {
+    const map = new Map<string, AlertRule[]>();
+    for (const r of rows) {
+      if (!map.has(r.tenant_id)) map.set(r.tenant_id, []);
+      map.get(r.tenant_id)!.push(r);
+    }
+    return [...map.entries()];
+  }, [rows]);
+
+  function toggleCollapse(tenantId: string) {
+    setCollapsed((cur) => {
+      const next = new Set(cur);
+      if (next.has(tenantId)) next.delete(tenantId);
+      else next.add(tenantId);
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-2xl font-semibold text-slate-900">Alert Rules</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">Alert rules</h1>
         <div className="flex gap-2">
           <Button variant="secondary" disabled={sync.isPending} onClick={() => sync.mutate()}>
             {sync.isPending ? "Syncing…" : "Sync email subscriptions"}
           </Button>
-          <Button
-            variant="secondary"
-            disabled={!filters.tenantId || defaults.isPending}
-            onClick={() => defaults.mutate()}
-          >
-            Create tenant defaults
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="inline-block">
+                  <Button
+                    variant="secondary"
+                    disabled={!filters.tenantId || defaults.isPending}
+                    onClick={() => defaults.mutate()}
+                  >
+                    Create tenant defaults
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent>
+                {!filters.tenantId
+                  ? "Choose a tenant to create its default rules."
+                  : "Add the standard default rules for this tenant."}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
           <Button onClick={() => setEditing({ mode: "create" })}>New rule</Button>
         </div>
       </div>
-      {!filters.tenantId && (
-        <p className="text-xs text-slate-500">Choose a tenant to create its default rules.</p>
-      )}
+
       {lastSync && (
-        <p role="status" className="rounded border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+        <p role="status" className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-ink shadow-card">
           {syncSummary(lastSync)}
           {lastSync.pending > 0 && " — contacts must click the confirmation link SNS emailed them."}
         </p>
       )}
 
+      {/* Edit/create Sheet */}
       {editing && types.data && (
-        <RuleForm
-          key={editing.mode === "edit" ? editing.rule.rule_id : "new"}
-          rule={editing.mode === "edit" ? editing.rule : undefined}
-          tenants={tenants.data ?? []}
-          types={types.data}
-          defaultTenantId={filters.tenantId}
-          onSaved={() => {
-            setEditing(null);
-            reload();
-          }}
-          onCancel={() => setEditing(null)}
-          onConflict={reload}
-        />
+        <Sheet open onOpenChange={(o) => !o && setEditing(null)}>
+          <SheetContent
+            aria-label={editing.mode === "edit" ? `Edit rule: ${editing.rule.alert_type_name}` : "New alert rule"}
+            className="w-full max-w-lg overflow-y-auto"
+          >
+            <div className="px-5 py-5">
+              <RuleForm
+                key={editing.mode === "edit" ? editing.rule.rule_id : "new"}
+                rule={editing.mode === "edit" ? editing.rule : undefined}
+                tenants={tenants.data ?? []}
+                types={types.data}
+                defaultTenantId={filters.tenantId}
+                onSaved={() => {
+                  setEditing(null);
+                  reload();
+                }}
+                onCancel={() => setEditing(null)}
+                onConflict={reload}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
       )}
 
       <FilterBar
@@ -258,7 +252,7 @@ export default function RulesPage() {
           setParams(new URLSearchParams(), { replace: true });
         }}
       >
-        <label className="text-xs text-slate-500">
+        <label className="text-xs text-muted">
           Tenant{" "}
           <select className={selectClass} value={params.get("tenant") ?? ""} onChange={(e) => setFilter("tenant", e.target.value)}>
             <option value="">All</option>
@@ -269,7 +263,7 @@ export default function RulesPage() {
             ))}
           </select>
         </label>
-        <label className="text-xs text-slate-500">
+        <label className="text-xs text-muted">
           House id{" "}
           <input
             className={selectClass}
@@ -284,7 +278,7 @@ export default function RulesPage() {
             placeholder="any"
           />
         </label>
-        <label className="text-xs text-slate-500">
+        <label className="text-xs text-muted">
           Type{" "}
           <select className={selectClass} value={params.get("type") ?? ""} onChange={(e) => setFilter("type", e.target.value)}>
             <option value="">All</option>
@@ -295,7 +289,7 @@ export default function RulesPage() {
             ))}
           </select>
         </label>
-        <label className="text-xs text-slate-500">
+        <label className="text-xs text-muted">
           Enabled{" "}
           <select className={selectClass} value={params.get("enabled") ?? ""} onChange={(e) => setFilter("enabled", e.target.value)}>
             <option value="">All</option>
@@ -306,10 +300,10 @@ export default function RulesPage() {
       </FilterBar>
 
       {rules.isPending ? (
-        <div className="py-8 text-center text-sm text-slate-500">Loading rules…</div>
+        <div className="py-8 text-center text-sm text-muted">Loading rules…</div>
       ) : rules.isError ? (
         <ErrorState message={`Could not load rules: ${rules.error.message}`} onRetry={() => rules.refetch()} />
-      ) : rules.data.data.length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState
           title="No rules"
           description={
@@ -319,15 +313,78 @@ export default function RulesPage() {
           }
         />
       ) : (
-        <>
-          <DataTable columns={columns} rows={rules.data.data} rowKey={(r) => r.rule_id} />
+        <div className="space-y-4">
+          {/* Sticky-ish header row legend */}
+          <div className={`hidden grid-cols-12 gap-2 px-3 text-xs font-medium uppercase tracking-wide text-muted sm:grid`}>
+            <span className="col-span-3">Alert type</span>
+            <span className="col-span-3">Applies to</span>
+            <span className="col-span-2">Min conf.</span>
+            <span className="col-span-2">Severity</span>
+            {anyFalsePos && <span className="col-span-1 tnum">FP 30d</span>}
+            <span className="col-span-1 text-right">Enabled</span>
+          </div>
+
+          {groups.map(([tenantId, tenantRules]) => {
+            const isCollapsed = collapsed.has(tenantId);
+            return (
+              <section key={tenantId} className="overflow-hidden rounded-lg border border-border bg-surface shadow-card">
+                <button
+                  type="button"
+                  onClick={() => toggleCollapse(tenantId)}
+                  className="flex w-full items-center gap-2 border-b border-border bg-surface-2 px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface-2"
+                >
+                  {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  <span className="flex-1">{tenantName(tenantId)}</span>
+                  <span className="tnum text-xs text-muted">{tenantRules.length} rule{tenantRules.length === 1 ? "" : "s"}</span>
+                </button>
+                {!isCollapsed && (
+                  <ul className="divide-y divide-border">
+                    {tenantRules.map((r) => (
+                      <li
+                        key={r.rule_id}
+                        className="grid grid-cols-12 items-center gap-2 px-3 py-2.5 text-sm hover:bg-surface-2"
+                      >
+                        <span className="col-span-3">
+                          <span className="block font-medium text-ink">{r.alert_type_name}</span>
+                          <span className="block text-xs text-muted">{r.trigger_labels.map(labelText).join(", ")}</span>
+                        </span>
+                        <span className="col-span-3 text-muted" title={r.house_id ?? ""}>
+                          {r.scope === "tenant_default"
+                            ? "Tenant default"
+                            : `House ${short(r.house_id ?? "")}${r.room_id ? ` · room ${short(r.room_id)}` : " · whole house"}`}
+                        </span>
+                        <span className="col-span-2"><ConfidenceMini value={r.min_confidence} /></span>
+                        <span className="col-span-2 inline-flex items-center gap-1">
+                          <SeverityBadge severity={r.effective_severity} />
+                          {r.severity === null && <span className="text-xs text-muted">default</span>}
+                        </span>
+                        {anyFalsePos && <span className="col-span-1 tnum text-muted">{r.false_positive_count_30d}</span>}
+                        <span className="col-span-1 flex items-center justify-end gap-2">
+                          <Button variant="ghost" size="sm" onClick={() => setEditing({ mode: "edit", rule: r })}>
+                            Edit
+                          </Button>
+                          <Switch
+                            checked={r.is_enabled}
+                            disabled={toggle.isPending}
+                            onCheckedChange={() => (r.is_enabled ? setDisabling(r) : toggle.mutate(r))}
+                            aria-label={r.is_enabled ? "Disable rule" : "Enable rule"}
+                          />
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            );
+          })}
+
           <Pagination
-            page={rules.data.meta.page}
-            pageSize={rules.data.meta.page_size}
-            total={rules.data.meta.total}
+            page={rules.data!.meta.page}
+            pageSize={rules.data!.meta.page_size}
+            total={rules.data!.meta.total}
             onChange={(p) => setFilter("page", String(p))}
           />
-        </>
+        </div>
       )}
 
       <ConfirmDialog

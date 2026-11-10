@@ -11,11 +11,11 @@ export interface ChartCardProps {
 
 export function ChartCard({ title, subtitle, children, actions }: ChartCardProps) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
       <div className="flex items-start justify-between">
         <div>
-          <h3 className="text-sm font-semibold text-slate-800">{title}</h3>
-          {subtitle && <p className="mt-0.5 text-xs text-slate-500">{subtitle}</p>}
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
         </div>
         {actions}
       </div>

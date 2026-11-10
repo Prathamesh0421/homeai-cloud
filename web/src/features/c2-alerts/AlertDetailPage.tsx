@@ -21,10 +21,10 @@ import { deliveryStatus, formatWhen, labelText, percent, timelineLabel, type Del
 const NOTE_MAX = 500;
 
 const TONE_CLASS: Record<DeliveryTone, string> = {
-  ok: "text-emerald-700",
-  pending: "text-amber-700",
+  ok: "text-success",
+  pending: "text-warning",
   retry: "text-orange-700",
-  failed: "text-red-700",
+  failed: "text-danger",
 };
 
 const TONE_ICON: Record<DeliveryTone, string> = { ok: "✓", pending: "…", retry: "↻", failed: "✕" };
@@ -37,8 +37,8 @@ const ACTION_DONE: Record<AlertAction, string> = {
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="mb-3 text-sm font-semibold text-slate-700">{title}</h2>
+    <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
+      <h2 className="mb-3 text-sm font-semibold text-ink">{title}</h2>
       {children}
     </section>
   );
@@ -84,11 +84,11 @@ export default function AlertDetailPage() {
     },
   });
 
-  if (alert.isPending) return <div className="py-8 text-center text-sm text-slate-500">Loading alert…</div>;
+  if (alert.isPending) return <div className="py-8 text-center text-sm text-muted">Loading alert…</div>;
   if (alert.isError) {
     return (
       <div className="space-y-4">
-        <Link to="/alerts" className="text-sm text-slate-600 hover:underline">
+        <Link to="/alerts" className="text-sm text-muted hover:underline">
           ← All alerts
         </Link>
         <ErrorState message={errorMessage(alert.error)} onRetry={() => alert.refetch()} />
@@ -102,15 +102,15 @@ export default function AlertDetailPage() {
 
   return (
     <div className="space-y-4">
-      <Link to="/alerts" className="text-sm text-slate-600 hover:underline">
+      <Link to="/alerts" className="text-sm text-muted hover:underline">
         ← All alerts
       </Link>
 
       <header className="flex flex-wrap items-center gap-3">
         <SeverityBadge severity={a.severity} />
-        <h1 className="text-2xl font-semibold text-slate-900">{a.alert_type_name}</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-ink">{a.alert_type_name}</h1>
         <StatusChip status={a.status} />
-        <div className="w-full text-sm text-slate-600">
+        <div className="w-full text-sm text-muted">
           {a.house_name ?? "House unavailable"}
           {a.room_name ? ` · ${a.room_name}` : ""} ·{" "}
           <time dateTime={a.triggered_at}>{formatWhen(a.triggered_at)}</time>
@@ -120,10 +120,10 @@ export default function AlertDetailPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Evidence">
           {/* STANDIN(C1-07): clip playback comes from C1 GET /clips/{media_id}/playback-url (C2-11). */}
-          <div className="mb-4 rounded border border-dashed border-slate-300 bg-slate-50 p-4 text-center text-sm text-slate-500">
+          <div className="mb-4 rounded-md border border-dashed border-border-strong bg-canvas p-4 text-center text-sm text-muted">
             Clip playback is not available yet.
           </div>
-          <p className="mb-2 text-sm text-slate-700">
+          <p className="mb-2 text-sm text-ink">
             Matched <strong>{labelText(a.top_label)}</strong> at {percent(a.top_confidence)}
             {a.evidence.threshold !== null && (
               <> (alert threshold {percent(a.evidence.threshold)}, rule plus house sensitivity)</>
@@ -132,7 +132,7 @@ export default function AlertDetailPage() {
           <ConfidenceBars
             scores={a.evidence.labels.map((l) => ({ label: labelText(l.label), score: l.confidence }))}
           />
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-muted">
             {a.evidence.detection_available
               ? a.evidence.model
                 ? `Model ${a.evidence.model.name} ${a.evidence.model.version}`
@@ -154,7 +154,7 @@ export default function AlertDetailPage() {
 
       <Section title="Contacts notified">
         <table className="w-full text-sm">
-          <thead className="text-left text-xs uppercase tracking-wide text-slate-500">
+          <thead className="text-left text-xs uppercase tracking-wide text-muted">
             <tr>
               <th className="py-1">#</th>
               <th className="py-1">Recipient</th>
@@ -166,12 +166,12 @@ export default function AlertDetailPage() {
             {a.notifications.map((n) => {
               const delivery = deliveryStatus(n);
               return (
-                <tr key={n.notification_id} className="border-t border-slate-100">
-                  <td className="py-1.5 text-slate-500">{n.priority ?? "—"}</td>
-                  <td className="py-1.5 text-slate-700">
+                <tr key={n.notification_id} className="border-t border-border">
+                  <td className="py-1.5 text-muted">{n.priority ?? "—"}</td>
+                  <td className="py-1.5 text-ink">
                     {n.channel === "in_app" ? "In-app alert list" : n.recipient}
                     {n.view_link && (
-                      <a href={n.view_link} className="ml-2 text-xs text-blue-700 underline" target="_blank" rel="noreferrer">
+                      <a href={n.view_link} className="ml-2 text-xs text-accent underline" target="_blank" rel="noreferrer">
                         demo link
                       </a>
                     )}
@@ -180,14 +180,14 @@ export default function AlertDetailPage() {
                     <span aria-hidden="true">{TONE_ICON[delivery.tone]} </span>
                     {delivery.text}
                   </td>
-                  <td className="py-1.5 text-slate-500">{n.sent_at ? formatWhen(n.sent_at) : "—"}</td>
+                  <td className="py-1.5 text-muted">{n.sent_at ? formatWhen(n.sent_at) : "—"}</td>
                 </tr>
               );
             })}
           </tbody>
         </table>
         {a.severity !== "critical" && a.severity !== "high" && (
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-muted">
             Emails go out for critical and high alerts only.
           </p>
         )}
@@ -195,11 +195,11 @@ export default function AlertDetailPage() {
 
       <Section title="Actions">
         {closed ? (
-          <p className="text-sm text-slate-600">This alert is closed; no further actions.</p>
+          <p className="text-sm text-muted">This alert is closed; no further actions.</p>
         ) : (
           <div className="space-y-3">
             <div>
-              <label htmlFor="alert-note" className="block text-xs font-medium text-slate-600">
+              <label htmlFor="alert-note" className="block text-xs font-medium text-muted">
                 Note (optional, saved with Acknowledge or Resolve)
               </label>
               <textarea
@@ -208,7 +208,7 @@ export default function AlertDetailPage() {
                 maxLength={NOTE_MAX}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
-                className="mt-1 w-full rounded border border-slate-300 p-2 text-sm"
+                className="mt-1 w-full rounded-md border border-border-strong bg-surface p-2 text-sm text-ink"
               />
             </div>
             <ActionBar>
@@ -230,7 +230,7 @@ export default function AlertDetailPage() {
               </Button>
             </ActionBar>
             {!a.allowed_actions.includes("resolve") && (
-              <p className="text-xs text-slate-500">Acknowledge the alert before resolving it.</p>
+              <p className="text-xs text-muted">Acknowledge the alert before resolving it.</p>
             )}
           </div>
         )}

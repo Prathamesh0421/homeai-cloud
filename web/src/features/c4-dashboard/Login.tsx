@@ -63,36 +63,54 @@ export default function Login() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50">
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-canvas">
+      {/* Atmosphere: layered soft gradients, not a flat slab. */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(120% 80% at 15% 0%, rgba(37,99,235,0.12), transparent 60%)," +
+            "radial-gradient(120% 80% at 100% 100%, rgba(30,58,138,0.08), transparent 55%)",
+        }}
+      />
       <form
         onSubmit={onSubmit}
-        className="w-full max-w-sm space-y-4 rounded-lg border border-slate-200 bg-white p-8 shadow-sm"
+        className="relative w-full max-w-md space-y-5 rounded-xl border border-border bg-surface p-8 shadow-pop"
       >
-        <h1 className="text-xl font-semibold text-slate-900">Sign in to HomeAI Cloud</h1>
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">HomeAI Cloud</h1>
+          <p className="mt-1 text-sm text-muted">Sign in to monitor your home.</p>
+        </div>
         <label className="block text-sm">
-          <span className="text-slate-700">Email</span>
+          <span className="font-medium text-ink">Email</span>
           <input
             type="email"
             required
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="mt-1 block w-full rounded border border-slate-300 px-3 py-2"
+            className="mt-1.5 block w-full rounded-md border border-border-strong bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-muted"
             autoComplete="email"
+            placeholder="you@example.com"
           />
         </label>
         <label className="block text-sm">
-          <span className="text-slate-700">Password</span>
+          <span className="font-medium text-ink">Password</span>
           <input
             type="password"
             required
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="mt-1 block w-full rounded border border-slate-300 px-3 py-2"
+            className="mt-1.5 block w-full rounded-md border border-border-strong bg-surface px-3 py-2.5 text-sm text-ink placeholder:text-muted"
             autoComplete="current-password"
+            placeholder="••••••••••"
           />
         </label>
         {error && (
-          <div className="rounded bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+          <div
+            className="rounded-md border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger"
+            role="alert"
+          >
             {error}
             {lockedFor !== null && lockedFor > 0 ? ` (${lockedFor}s)` : ""}
           </div>
@@ -100,7 +118,7 @@ export default function Login() {
         <button
           type="submit"
           disabled={submitting || lockedFor !== null}
-          className="w-full rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+          className="w-full rounded-md bg-primary px-3 py-2.5 text-sm font-medium text-white shadow-card transition-colors hover:bg-primary-hover disabled:opacity-50"
         >
           {submitting ? "Signing in…" : "Sign in"}
         </button>

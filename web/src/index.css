@@ -4,8 +4,60 @@
 
 :root {
   color-scheme: light;
+
+  /* Safety console tokens — light only. Deep blue brand reserved for primary
+     actions + selection; severity colors are reserved for severity only. */
+  --color-canvas: 246 248 252;        /* app background (cool blue-gray) */
+  --color-surface: 255 255 255;       /* cards / panels */
+  --color-surface-2: 240 245 252;     /* table header, hover */
+  --color-ink: 15 23 42;              /* primary text */
+  --color-muted: 100 116 139;        /* secondary text */
+  --color-border: 226 232 240;       /* hairlines */
+  --color-border-strong: 203 213 225;
+  --color-primary: 30 58 138;         /* deep blue — primary buttons */
+  --color-primary-hover: 29 78 216;
+  --color-accent: 37 99 235;          /* blue — focus / nav selection */
+  --color-accent-soft: 219 234 254;
+  --color-danger: 192 38 45;          /* critical */
+  --color-danger-soft: 254 226 226;
+  --color-warning: 217 119 6;
+  --color-warning-soft: 254 215 170;
+  --color-success: 5 150 105;
+  --color-success-soft: 209 250 229;
+  /* Severity-only palette (reserved; not used for brand/selection). */
+  --color-sev-critical: 192 38 45;
+  --color-sev-critical-soft: 254 226 226;
+  --color-sev-high: 217 115 13;
+  --color-sev-high-soft: 255 237 213;
+  --color-sev-medium: 181 138 0;
+  --color-sev-medium-soft: 254 249 219;
+  --color-sev-low: 91 122 153;
+  --color-sev-low-soft: 226 232 240;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  --shadow-card: 0 1px 2px 0 rgb(15 23 42 / 0.04), 0 1px 3px 0 rgb(15 23 42 / 0.06);
+  --shadow-pop: 0 10px 30px -10px rgb(15 23 42 / 0.18);
+  --ring-focus: 0 0 0 3px rgb(37 99 235 / 0.28);
 }
 
 body {
-  @apply bg-slate-50 text-slate-900 antialiased;
+  @apply bg-canvas text-ink antialiased;
+  font-feature-settings: "tnum";
+}
+
+/* Tabular numbers for KPI tiles, table counts, confidence %. */
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+
+/* Consistent focus ring for keyboard users across native controls. */
+:where(button, a, input, select, textarea):focus-visible {
+  outline: none;
+  box-shadow: var(--ring-focus);
+  border-radius: var(--radius-sm);
 }

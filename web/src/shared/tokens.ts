@@ -1,8 +1,9 @@
-/** Design tokens for the HomeAI Cloud UI kit.
+/** Design tokens for the HomeAI Cloud safety console (light only).
  *
- * Centralises colours, severity, and status maps so chips/badges/KPI tiles
- * stay consistent across feature pages. Tailwind handles the bulk of styling;
- * these tokens cover the semantic mappings that Tailwind classes alone can't.
+ * Brand color (deep blue) is reserved for primary actions + selection.
+ * Severity colors are reserved for severity only — never brand/selection.
+ * Tailwind handles the bulk of styling; these tokens cover the semantic
+ * mappings (severity, status) that Tailwind classes alone can't.
  */
 
 export type Severity = "critical" | "high" | "medium" | "low" | "info";
@@ -19,13 +20,31 @@ export const SEVERITY_LABEL: Record<Severity, string> = {
   info: "Info",
 };
 
-/** Tailwind class fragments for each severity badge. */
+/** Severity-only palette (reserved for severity; never brand/selection). */
 export const SEVERITY_CLASSES: Record<Severity, string> = {
-  critical: "bg-red-100 text-red-800 border-red-200",
-  high: "bg-orange-100 text-orange-800 border-orange-200",
-  medium: "bg-amber-100 text-amber-800 border-amber-200",
-  low: "bg-sky-100 text-sky-800 border-sky-200",
-  info: "bg-slate-100 text-slate-700 border-slate-200",
+  critical: "bg-sev-critical-soft text-sev-critical border-sev-critical/30",
+  high: "bg-sev-high-soft text-sev-high border-sev-high/30",
+  medium: "bg-sev-medium-soft text-sev-medium border-sev-medium/30",
+  low: "bg-sev-low-soft text-sev-low border-sev-low/30",
+  info: "bg-surface-2 text-muted border-border",
+};
+
+/** Edge-bar fill for a severity (used on alert rows / timeline ticks). */
+export const SEVERITY_BAR: Record<Severity, string> = {
+  critical: "bg-sev-critical",
+  high: "bg-sev-high",
+  medium: "bg-sev-medium",
+  low: "bg-sev-low",
+  info: "bg-border-strong",
+};
+
+/** Raw severity hex (for inline styles, e.g. SVG ticks). */
+export const SEVERITY_HEX: Record<Severity, string> = {
+  critical: "#C0262D",
+  high: "#D9730D",
+  medium: "#B58A00",
+  low: "#5B7A99",
+  info: "#94A3B8",
 };
 
 export const STATUS_LABEL: Record<AlertStatus, string> = {
@@ -36,12 +55,13 @@ export const STATUS_LABEL: Record<AlertStatus, string> = {
   false_positive: "False Positive",
 };
 
+/** Status chips stay neutral/muted — not brand blue. Only resolved leans success. */
 export const STATUS_CLASSES: Record<AlertStatus, string> = {
-  open: "bg-blue-100 text-blue-800 border-blue-200",
-  new: "bg-blue-100 text-blue-800 border-blue-200",
-  acknowledged: "bg-violet-100 text-violet-800 border-violet-200",
-  resolved: "bg-emerald-100 text-emerald-800 border-emerald-200",
-  false_positive: "bg-slate-100 text-slate-600 border-slate-200",
+  open: "bg-surface-2 text-ink border-border-strong",
+  new: "bg-surface-2 text-ink border-border-strong",
+  acknowledged: "bg-warning-soft text-warning border-warning/30",
+  resolved: "bg-success-soft text-success border-success/30",
+  false_positive: "bg-surface-2 text-muted border-border",
 };
 
 export const CLIP_STATUS_LABEL: Record<ClipStatus, string> = {
@@ -52,17 +72,31 @@ export const CLIP_STATUS_LABEL: Record<ClipStatus, string> = {
 };
 
 export const CLIP_STATUS_CLASSES: Record<ClipStatus, string> = {
-  uploaded: "bg-slate-100 text-slate-700 border-slate-200",
-  classifying: "bg-blue-100 text-blue-800 border-blue-200",
-  classified: "bg-emerald-100 text-emerald-800 border-emerald-200",
-  failed: "bg-red-100 text-red-800 border-red-200",
+  uploaded: "bg-surface-2 text-muted border-border",
+  classifying: "bg-surface-2 text-ink border-border-strong",
+  classified: "bg-success-soft text-success border-success/30",
+  failed: "bg-danger-soft text-danger border-danger/30",
 };
 
+/**
+ * Shared class fragments. Use these instead of one-off hard-coded classes
+ * so the safety-console theme stays consistent across pages.
+ */
 export const COLORS = {
-  border: "border-slate-200",
-  surface: "bg-white",
-  muted: "text-slate-500",
-  text: "text-slate-800",
-  primary: "bg-slate-900 text-white",
-  primaryHover: "hover:bg-slate-700",
+  border: "border-border",
+  surface: "bg-surface",
+  surface2: "bg-surface-2",
+  muted: "text-muted",
+  text: "text-ink",
+  primary: "bg-primary text-white",
+  primaryHover: "hover:bg-primary-hover",
+  accent: "bg-accent text-white",
+  accentSoft: "bg-accent-soft text-accent",
 } as const;
+
+/** Standard surface card: white panel on the canvas background. */
+export const CARD = "rounded-xl border border-border bg-surface shadow-card";
+
+/** Input control baseline — pairs with the global focus-visible ring. */
+export const INPUT =
+  "rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted";
