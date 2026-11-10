@@ -16,7 +16,11 @@ import OpsDashboard from "./features/c4-dashboard/pages/OpsDashboard";
 import SettingsPage from "./features/c4-dashboard/pages/SettingsPage";
 import TenantsPage from "./features/c4-dashboard/pages/TenantsPage";
 import TenantDetailPage from "./features/c4-dashboard/pages/TenantDetailPage";
-import IotFeeds from "./features/c4-dashboard/pages/IotFeeds";
+import FeedManagerPage from "./features/c1-iot/feed-manager/FeedManagerPage";
+import FeedDetailPage from "./features/c1-iot/feed-detail/FeedDetailPage";
+import HousesPage from "./features/c1-iot/houses/HousesPage";
+import ClipLibraryPage from "./features/c1-iot/clips/ClipLibraryPage";
+import MyFeedsPage from "./features/c1-iot/my-feeds/MyFeedsPage";
 import AlertsPage from "./features/c2-alerts/AlertsPage";
 import AlertDetailPage from "./features/c2-alerts/AlertDetailPage";
 import RulesPage from "./features/c2-alerts/RulesPage";
@@ -77,7 +81,12 @@ export default function App() {
               >
                 <Route path="/home/overview" element={<RouteGuard allow={["house_owner"]}><HomeOverview /></RouteGuard>} />
                 <Route path="/home/settings" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><SettingsPage /></RouteGuard>} />
-                <Route path="/iot/feeds" element={<RouteGuard allow={["iot_staff", "cloud_staff"]}><IotFeeds /></RouteGuard>} />
+                <Route path="/home/feeds" element={<RouteGuard allow={["house_owner"]}><MyFeedsPage /></RouteGuard>} />
+                <Route path="/home/clips" element={<RouteGuard allow={["house_owner"]}><ClipLibraryPage /></RouteGuard>} />
+                <Route path="/iot/feeds" element={<RouteGuard allow={["iot_staff", "cloud_staff"]}><FeedManagerPage /></RouteGuard>} />
+                <Route path="/iot/feeds/:feedId" element={<RouteGuard allow={["iot_staff", "cloud_staff"]}><FeedDetailPage /></RouteGuard>} />
+                <Route path="/iot/houses" element={<RouteGuard allow={["iot_staff", "cloud_staff"]}><HousesPage /></RouteGuard>} />
+                <Route path="/iot/clips" element={<RouteGuard allow={["iot_staff", "cloud_staff"]}><ClipLibraryPage /></RouteGuard>} />
                 <Route path="/alerts" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><AlertsPage /></RouteGuard>} />
                 <Route path="/alerts/:alertId" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><AlertDetailPage /></RouteGuard>} />
                 <Route path="/ops/dashboard" element={<RouteGuard allow={["cloud_staff"]}><OpsDashboard /></RouteGuard>} />
