@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getClipUrl } from "../../api/c2";
 import { ApiError } from "../../api/http";
 import { Button } from "@/components/ui/button";
+import { isAudioClip } from "./format";
 
 type State =
   | { kind: "idle" }
@@ -29,9 +30,9 @@ export function AlertClip({ mediaId }: { mediaId: string }) {
   }
 
   if (state.kind === "ready") {
-    // A <video> element plays audio clips too (C1 stores audio or video).
+    const Player = isAudioClip(state.url) ? "audio" : "video"; // C1 stores audio or video clips
     return (
-      <video
+      <Player
         src={state.url}
         controls
         autoPlay

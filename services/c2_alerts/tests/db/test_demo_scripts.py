@@ -141,6 +141,33 @@ def test_detection_document_is_what_c2_reads():
     assert fake_detection.evaluate_payload(doc)["detected_at"].endswith("Z")
 
 
+def test_media_id_of_a_real_clip_or_a_made_up_one():
+    clip = "77777777-0000-4000-8000-000000000001"
+    doc = fake_detection.build_detection(
+        label="glass_break", confidence=0.8, house="maple", room=None, media_id=clip
+    )
+    assert doc["media_id"] == clip
+    assert fake_detection.evaluate_payload(doc)["media_id"] == clip
+    made_up = fake_detection.build_detection(
+        label="glass_break", confidence=0.8, house="maple", room=None
+    )
+    assert made_up["media_id"] != clip
+
+
+def test_media_id_option_reaches_c2(client, session, stored, c3_token, capsys):
+    make_rule(session, "intrusion")
+    clip = "77777777-0000-4000-8000-000000000002"
+    detections = FakeCollection(stored)
+    args = ["--label", "glass_break", "--media-id", clip.upper(), "--token", c3_token]
+    assert fake_detection.main(args, http=client, detections=detections) == 0
+    [detection_id] = detections.docs
+    assert stored.get(detection_id).media_id == clip  # normalised to the lowercase UUID
+    with pytest.raises(SystemExit):  # not a UUID: argparse-style failure before anything runs
+        fake_detection.main(
+            ["--label", "dog", "--media-id", "clip-1", "--token", "t"], detections=detections
+        )
+
+
 def test_room_uuid_or_unknown_house_passes_through():
     other_house = "22222222-0000-0000-0000-0000000000ff"
     room = "33333333-0000-0000-0000-0000000000ff"

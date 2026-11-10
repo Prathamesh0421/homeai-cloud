@@ -106,9 +106,16 @@ def test_view_returns_only_the_public_fields(client, alert):
             detected_at=TRIGGERED,
         )
     )
+    # A real C1 URL: the S3 key carries tenant/house/feed/media UUIDs (CHANGELOG 2026-11-10).
+    clip_url = (
+        f"https://homeai-bucket.s3.amazonaws.com/tenants/{alert.tenant_id}/{HOUSE_A1}/"
+        f"{uid()}/{alert.media_id}.wav?X-Amz-Signature=abc"
+    )
+    client.app.state.test_clips.urls[alert.media_id] = clip_url
     r = client.get(f"{VIEW}/{token_for(client, alert.alert_id)}")
     assert r.status_code == 200, r.text
-    assert r.json()["data"] == {
+    data = r.json()["data"]
+    assert data == {
         "alert_type_name": "Glass break",
         "severity": "high",
         "status": "open",
@@ -116,10 +123,11 @@ def test_view_returns_only_the_public_fields(client, alert):
         "room_name": "Kitchen",
         "triggered_at": "2026-10-24T23:10:00Z",
         "labels": [{"label": "glass_break", "confidence": 0.78}],
-        "clip_url": None,
+        "clip_url": clip_url,
         "expires_at": "2026-10-25T23:10:00Z",
     }
-    # No identifiers or personal data in the public page.
+    # No identifiers or personal data in the public page, except inside the clip URL's S3 key.
+    rest = r.text.replace(clip_url, "")
     for leak in (
         alert.alert_id,
         alert.tenant_id,
@@ -128,7 +136,7 @@ def test_view_returns_only_the_public_fields(client, alert):
         alert.media_id,
         CONTACT,
     ):
-        assert leak not in r.text
+        assert leak not in rest
 
 
 def test_view_plays_the_clip_from_c1(client, alert):

@@ -9,6 +9,7 @@ import {
   dayEndIso,
   dayStartIso,
   deliveryStatus,
+  isAudioClip,
   labelText,
   relativeTime,
   timelineLabel,
@@ -37,6 +38,13 @@ describe("format", () => {
     expect(relativeTime("2026-11-05T09:00:00Z", now)).toBe("3 h ago");
     expect(relativeTime("2026-11-01T12:00:00Z", now)).toBe("4 d ago");
     expect(relativeTime("2026-11-05T12:05:00Z", now)).toBe("just now"); // clock skew
+  });
+
+  it("tells audio clips from video ones by the URL path, not the signature", () => {
+    expect(isAudioClip("https://b.s3.amazonaws.com/t/h/f/m.wav?X-Amz-Signature=a.mp4")).toBe(true);
+    expect(isAudioClip("https://b.s3.amazonaws.com/t/h/f/m.MP3?sig")).toBe(true);
+    expect(isAudioClip("https://b.s3.amazonaws.com/t/h/f/m.mp4?X-Amz-Algorithm=x.wav")).toBe(false);
+    expect(isAudioClip("not a url")).toBe(false);
   });
 
   it("turns labels into words", () => {
@@ -291,7 +299,9 @@ describe("AlertDetailPage", () => {
     });
     renderDetail();
     fireEvent.click(await screen.findByRole("button", { name: "Play recording" }));
-    expect(await screen.findByLabelText("Alert recording")).toHaveAttribute("src", url);
+    const player = await screen.findByLabelText("Alert recording");
+    expect(player).toHaveAttribute("src", url);
+    expect(player.tagName).toBe("AUDIO");
     const clip = calls.find((c) => c.url.startsWith("/api/v1/clips/"))!;
     expect(clip.headers.Authorization).toMatch(/^Bearer h\./);
   });

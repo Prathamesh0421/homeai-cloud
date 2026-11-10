@@ -87,3 +87,13 @@ export function dayEndIso(day: string): string {
   d.setDate(d.getDate() + 1);
   return d.toISOString();
 }
+
+/** True for C1's audio clips (.wav, .mp3), from the presigned URL's path (the query is the
+ *  signature). They play in <audio>: iPhone Safari is unreliable with audio-only <video>. */
+export function isAudioClip(url: string): boolean {
+  try {
+    return /\.(wav|mp3)$/i.test(new URL(url, "http://x").pathname);
+  } catch {
+    return false;
+  }
+}

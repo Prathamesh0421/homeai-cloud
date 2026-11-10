@@ -8,7 +8,7 @@ import { useQuery } from "@tanstack/react-query";
 import { c2Keys, getAlertView } from "../../api/c2";
 import { ApiError } from "../../api/http";
 import { ConfidenceBars, SeverityBadge, StatusChip } from "../../shared";
-import { formatWhen, labelText, percent } from "./format";
+import { formatWhen, labelText, percent, isAudioClip } from "./format";
 
 export const VIEW_REFRESH_MS = 30_000; // status changes (acknowledged / resolved) show up
 
@@ -109,8 +109,11 @@ export default function AlertViewPage() {
       <section className="rounded-xl border border-border bg-surface p-4 shadow-card">
         <h2 className="mb-2 text-sm font-semibold text-ink">Recording</h2>
         {a.clip_url ? (
-          // Audio or video clip from C1; a <video> element plays both.
-          <video controls preload="none" src={a.clip_url} className="w-full" aria-label="Alert recording" />
+          isAudioClip(a.clip_url) ? (
+            <audio controls preload="none" src={a.clip_url} className="w-full" aria-label="Alert recording" />
+          ) : (
+            <video controls preload="none" src={a.clip_url} className="w-full" aria-label="Alert recording" />
+          )
         ) : (
           <p className="text-sm text-muted">The recording is not available.</p>
         )}

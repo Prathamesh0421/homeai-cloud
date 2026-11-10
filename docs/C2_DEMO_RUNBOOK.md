@@ -43,14 +43,18 @@ and the SNS topics; it only *reads* C4 settings/contacts, C1 houses/rooms, C3 de
 5. **Disable** a rule → confirm dialog → Off; **Enable** it again.
 
 **2:00–4:30 · An alert end to end.** ⏳ C1
-1. Trigger (fallback for the C1 upload → C3 path):
-   **EC2** `make demo-c2-detect ARGS="--label glass_break --conf 0.78"` → `C2 answered 201 … "decision": "alert"`;
-   note the printed `--resend <detection_id>`.
+1. Trigger. Real path: in C1 (log in as `iot@acme.test`) upload `glass_break.wav` to a Maple feed
+   in Feed Detail → C3 classifies it → C2 raises the alert. Fallback that still plays a real clip:
+   copy that clip's media id from C1's Clip Library, then
+   **EC2** `make demo-c2-detect ARGS="--label glass_break --conf 0.78 --media-id <clip id>"` →
+   `C2 answered 201 … "decision": "alert"`; note the printed `--resend <detection_id>`.
+   (Without `--media-id` the alert works but shows "The recording is not available".)
 2. Tab 2 (Maple owner) → **Alerts**: the alert appears within 15 s (polling) — *Glass break*, high,
    Entryway, open.
 3. Phone: 3 emails, Alice → Bob → Carol (subject `[HomeAI] HIGH Glass break - Maple St`). Open one
    → **Alert View**, no login: type, severity, room, what was heard, "call 911". No owner PII.
-4. **Alert Detail**: labels with the threshold, timeline, contacts (sent / pending), demo link.
+4. **Alert Detail**: **Play recording** (C1 clip, C2-11), labels with the threshold, timeline,
+   contacts (sent / pending), demo link. The phone's Alert View plays the same clip.
    *Resolve* is disabled while open → **Acknowledge** with a note → **Resolve**. The phone's Alert
    View updates within 30 s.
 5. Swagger (tab 3): `POST /alerts/{id}/resolve` on an *open* alert → `409 invalid_state {from, to}`.
@@ -79,6 +83,7 @@ logs: **EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compos
 ## 3. If something goes wrong
 | Problem | Do |
 |---|---|
+| "The recording is not available" | The alert's `media_id` is not a C1 clip (fake detection without `--media-id`), or C1 is down |
 | Evaluate answers 503 `c1` | C1's tables are missing on RDS: show the rule engine with the local stack instead (`docs/03` §4), or the decision tables in the unit tests |
 | Email slow / in spam | Show the alert's contacts (sent) in Alert Detail and open the link from there (DEMO_MODE `view_link`) |
 | Site down | Console → instance running? Then the `up -d` command from §1 |
