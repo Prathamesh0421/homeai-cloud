@@ -333,6 +333,7 @@ def test_runner_sync_over_real_gateways(runner, session, notifier):
 
 # STANDIN(C1-02): relies on the test database having no c4 tables; once the real C1/C4
 # migrations build them, seed a contact there and assert a real sync result instead.
+@pytest.mark.usefixtures("pg_engine")  # skip (or fail on CI) without Postgres, like the others
 def test_default_wiring_uses_the_configured_databases():
     """JobRunner as create_app builds it: db.session_scope, the c2_reader engine, its own lock."""
     from app.gateways.notifier import LogNotifier
