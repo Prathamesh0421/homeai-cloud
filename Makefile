@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim demo-c1-reset deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
+.PHONY: help lint lint-py lint-web test test-common web migrate seed token test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim demo-c1-reset deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -14,6 +14,8 @@ help:
 	@echo "  make test-c1-full  C1 tests + coverage against real Postgres/Mongo/LocalStack containers"
 	@echo "  make web         run Vite dev server (web/)"
 	@echo "  make migrate     run Alembic for every service (once they exist)"
+	@echo "  make seed        demo seed for every component (C4 -> C1 -> C2), in the containers"
+	@echo "  make token ROLE=iot_staff | EMAIL=... | CLIENT=c3-worker   print a dev JWT from C4"
 
 lint: lint-py lint-web
 
@@ -75,7 +77,19 @@ migrate:
 		fi; \
 	done
 
-# C4 owns its own seed until the master scripts/seed.py (P0-10) lands. Migrations first:
+# Every component's demo seed in order (C4 -> C1 -> C2; C3's model comes from its migration),
+# each inside its running container; idempotent (P0-10, docs/03 §7). Python stdlib only, so it
+# also runs on the EC2 host: make seed SEED_COMPOSE="$(COMPOSE_PROD) $(PROD_PROFILES)"
+SEED_COMPOSE ?= $(COMPOSE) --profile c1 --profile c3 --profile gateway
+seed:
+	$(PYTHON) scripts/seed.py --compose "$(SEED_COMPOSE)" $(if $(ONLY),--only $(ONLY))
+
+# Dev JWT from C4 for a seeded user or service client (docs/03 §6). C4_PUBLIC_URL defaults to
+# http://localhost:8004. Example: TOKEN=$$(make -s token ROLE=iot_staff)
+token:
+	@$(PYTHON) scripts/mint_token.py $(if $(ROLE),--role $(ROLE)) $(if $(EMAIL),--email $(EMAIL)) $(if $(CLIENT),--client $(CLIENT))
+
+# C4's own seed (`make seed` runs it first, in its container). Migrations first:
 # the seed only writes rows (as c4_app, from DATABASE_URL_C4).
 # On EC2 (no local alembic): use `make seed-c4-docker` after the stack is up.
 seed-c4:
