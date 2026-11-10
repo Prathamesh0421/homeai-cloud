@@ -97,6 +97,7 @@ C3_BASE_URL=http://c3-data:8003
 DATABASE_URL_C2=$(pg_url c2_app)
 DATABASE_READER_URL_C2=$(pg_url c2_reader)
 DATABASE_URL_C3=$(pg_url c3_app)
+DATABASE_READER_URL_C3=$(pg_url c3_reader)
 DATABASE_URL_C4=$(pg_url c4_app)
 
 # MongoDB — container on the EC2 host (passwords aligned by set_passwords.sh)
