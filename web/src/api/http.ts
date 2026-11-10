@@ -101,6 +101,8 @@ export const http = {
   get: <T>(path: string) => request<T>("GET", path),
   /** A list endpoint's ``{data, meta: {page, page_size, total}}``. */
   getPage: <T>(path: string) => request<Page<T>>("GET", path, undefined, true),
+  /** Keep the full ``{data, meta}`` envelope (e.g. dashboard summary). */
+  getEnvelope: <T>(path: string) => request<Envelope<T>>("GET", path, undefined, true),
   post: <T>(path: string, body?: unknown) => request<T>("POST", path, body),
   put: <T>(path: string, body?: unknown, options?: RequestOptions) =>
     request<T>("PUT", path, body, false, options),

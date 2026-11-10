@@ -12,6 +12,8 @@ import { AppShell } from "./shared/AppShell";
 import Login from "./features/c4-dashboard/Login";
 import HomeOverview from "./features/c4-dashboard/pages/HomeOverview";
 import OpsDashboard from "./features/c4-dashboard/pages/OpsDashboard";
+import SettingsPage from "./features/c4-dashboard/pages/SettingsPage";
+import TenantsPage from "./features/c4-dashboard/pages/TenantsPage";
 import IotFeeds from "./features/c4-dashboard/pages/IotFeeds";
 import AlertsPage from "./features/c2-alerts/AlertsPage";
 import AlertDetailPage from "./features/c2-alerts/AlertDetailPage";
@@ -28,28 +30,6 @@ function RootRedirect() {
   if (loading) return <div className="p-8 text-slate-500">Loading…</div>;
   if (!session) return <Navigate to="/login" replace />;
   return <Navigate to={landingForRole(session.role)} replace />;
-}
-
-function SettingsPlaceholder() {
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold text-slate-900">Services & Settings</h1>
-      <div className="rounded border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
-        Service toggles, quiet hours, and emergency contacts land in C4-12.
-      </div>
-    </div>
-  );
-}
-
-function TenantsPlaceholder() {
-  return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-semibold text-slate-900">Tenants & Users</h1>
-      <div className="rounded border border-dashed border-slate-300 bg-white p-8 text-center text-slate-400">
-        Tenant and user admin lands in C4-14.
-      </div>
-    </div>
-  );
 }
 
 function ModelsPlaceholder() {
@@ -92,13 +72,13 @@ export default function App() {
               }
             >
               <Route path="/home/overview" element={<RouteGuard allow={["house_owner"]}><HomeOverview /></RouteGuard>} />
-              <Route path="/home/settings" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><SettingsPlaceholder /></RouteGuard>} />
+              <Route path="/home/settings" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><SettingsPage /></RouteGuard>} />
               <Route path="/iot/feeds" element={<RouteGuard allow={["iot_staff", "cloud_staff"]}><IotFeeds /></RouteGuard>} />
               <Route path="/alerts" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><AlertsPage /></RouteGuard>} />
               <Route path="/alerts/:alertId" element={<RouteGuard allow={["house_owner", "cloud_staff"]}><AlertDetailPage /></RouteGuard>} />
               <Route path="/ops/dashboard" element={<RouteGuard allow={["cloud_staff"]}><OpsDashboard /></RouteGuard>} />
               <Route path="/ops/alert-rules" element={<RouteGuard allow={["cloud_staff"]}><RulesPage /></RouteGuard>} />
-              <Route path="/ops/tenants" element={<RouteGuard allow={["cloud_staff"]}><TenantsPlaceholder /></RouteGuard>} />
+              <Route path="/ops/tenants" element={<RouteGuard allow={["cloud_staff"]}><TenantsPage /></RouteGuard>} />
               <Route path="/ops/models" element={<RouteGuard allow={["cloud_staff"]}><ModelsPlaceholder /></RouteGuard>} />
               <Route path="/ops/records" element={<RouteGuard allow={["cloud_staff"]}><RecordsPlaceholder /></RouteGuard>} />
             </Route>

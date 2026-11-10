@@ -10,6 +10,22 @@ anything you can call from C1/C2/C3. Older passes stay for history.
 
 ## Passes
 
+### C4-08/12/13/14 — 10 Nov 2026 (demo UX + live summary)
+
+| ID | What landed |
+|---|---|
+| C4-12 | `SettingsPage`: service toggles, quiet hours, sensitivity, emergency contacts (SortableList + SaveBar). Route `/home/settings`. |
+| C4-14 | `TenantsPage`: tenants table, users panel, create tenant/user, unlock/deactivate. Route `/ops/tenants`. |
+| C4-08 | `GET /api/v1/dashboard/summary` via `StatsAggregator` + C1/C2/C3 gateways. Live-only; failed sources → zeros + `meta.unavailable`. |
+| C4-13 | `HomeOverview` + `OpsDashboard` wired to summary (KPIs, bars, recent alerts, 15s poll, unavailable badge). |
+| note | House pickers use `SEED_HOUSES` from `scripts/seed_ids.py` (`web/.../houseOptions.ts`). **REPLACE_WHEN_C1** when `GET /houses` ships. |
+| note | **C4-09** (StatsRollupJob / `dashboard_stats_daily`) deferred; summary is live for the selected range only. |
+
+**Teammate notes**
+- Rebuild web/Caddy after pull so Settings/Tenants/Dashboard UI appears.
+- Until C1 is up, expect `meta.unavailable` to include `c1` (feeds KPIs stay 0).
+- Seed house UUIDs: Maple `…00a1`, Oak `…00a2` — swap for C1 houses API later.
+
 ### C4-16 follow-up — 8 Nov 2026 (EC2 first deploy)
 
 | ID | What landed |
@@ -72,6 +88,6 @@ anything you can call from C1/C2/C3. Older passes stay for history.
 
 ## Still open (later weeks)
 
-C4-08/09 dashboards + rollup · C4-12–14 feature pages · C4-17 Playwright.
+C4-09 StatsRollupJob + rollup endpoint · C4-17 Playwright · replace seed house options when C1 houses API lands.
 Master `scripts/seed.py` stays with its Phase 0 owner; until then use `make seed-c4` (local) or `make seed-c4-docker` (EC2).
-C4-16 provision + first EC2 smoke are done (8 Nov); C1/C3 still need to join the stack for the full clip→alert path.
+C4-16 provision + first EC2 smoke are done (8 Nov); C1 still needs to join for feeds stats / full clip→alert path.

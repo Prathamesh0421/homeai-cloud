@@ -186,3 +186,62 @@ export function patchUser(
 ): Promise<AdminUser> {
   return http.patch<AdminUser>(`/api/v1/users/${userId}`, body);
 }
+
+// --- Dashboard summary (C4-08) ----------------------------------------------
+
+export type DashboardRange = "24h" | "7d" | "30d";
+
+export interface DashboardKpis {
+  houses: number;
+  feeds_total: number;
+  feeds_active: number;
+  feeds_online: number;
+  alerts: number;
+  open_alerts: number;
+  clips_classified: number;
+}
+
+export interface DashboardSummary {
+  kpis: DashboardKpis;
+  alerts_by_severity: { critical: number; high: number; medium: number; low: number };
+  alerts_by_day: { date: string; count: number }[];
+  detections_top: { label: string; count: number }[];
+  recent_alerts: {
+    alert_id: string;
+    alert_type_code: string;
+    severity: string;
+    status: string;
+    house_name: string | null;
+    room_name: string | null;
+    triggered_at: string | null;
+  }[];
+  activity: { house_id: string; room_id: string; anomaly_score: number; band: string }[];
+}
+
+export interface DashboardSummaryResult {
+  data: DashboardSummary;
+  meta: {
+    range: DashboardRange;
+    generated_at: string;
+    live_since: string;
+    unavailable: string[];
+  };
+}
+
+export function fetchDashboardSummary(params: {
+  range?: DashboardRange;
+  houseId?: string;
+  tenantId?: string;
+}): Promise<DashboardSummaryResult> {
+  const q = new URLSearchParams();
+  if (params.range) q.set("range", params.range);
+  if (params.houseId) q.set("house_id", params.houseId);
+  if (params.tenantId) q.set("tenant_id", params.tenantId);
+  const qs = q.toString();
+  return http
+    .getEnvelope<DashboardSummary>(`/api/v1/dashboard/summary${qs ? `?${qs}` : ""}`)
+    .then((env) => ({
+      data: env.data,
+      meta: env.meta as DashboardSummaryResult["meta"],
+    }));
+}
