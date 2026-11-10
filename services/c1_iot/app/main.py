@@ -13,8 +13,9 @@ from homeai_common.errors import install_error_handlers
 from homeai_common.health import HealthCheck, health_router
 from homeai_common.logging import RequestIdMiddleware, configure_logging
 
-from app.api import feeds, houses
+from app.api import feeds, houses, ingest
 from app.db.mongo_indexes import MEDIA_EVENTS, ensure_indexes
+from app.gateways.s3_media_gateway import S3MediaGateway
 from app.settings import SERVICE_NAME, Settings, get_settings
 
 logger = logging.getLogger(__name__)
@@ -68,6 +69,12 @@ def create_app(
         lifespan=lifespan,
     )
     app.state.settings = settings
+    app.state.storage = S3MediaGateway(
+        bucket=settings.s3_bucket,
+        region=settings.aws_region,
+        endpoint_url=settings.aws_endpoint,
+        public_endpoint_url=settings.aws_public_endpoint_url or None,
+    )
     install_error_handlers(app)
     app.add_middleware(RequestIdMiddleware)
 
@@ -80,4 +87,5 @@ def create_app(
     )
     app.include_router(houses.router)
     app.include_router(feeds.router)
+    app.include_router(ingest.router)
     return app

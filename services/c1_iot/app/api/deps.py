@@ -12,7 +12,12 @@ from datetime import UTC, datetime
 from fastapi import Depends, HTTPException, Request
 from homeai_common import db
 from homeai_common.auth import Principal, current_principal, require_roles
+from homeai_common.errors import ApiError
+from homeai_common.mongo import get_mongo_db
 
+from app.db.mongo_indexes import MEDIA_EVENTS
+from app.gateways.s3_media_gateway import MediaStorage
+from app.repositories.media_event_repo import MediaEventRepository
 from app.settings import Settings
 
 STAFF_ROLES = frozenset({"iot_staff", "cloud_staff"})
@@ -34,6 +39,20 @@ def get_app_settings(request: Request) -> Settings:
 def get_clock() -> Callable[[], datetime]:
     """Current UTC time source (tests override it)."""
     return lambda: datetime.now(UTC)
+
+
+def get_media_repo(settings: Settings = Depends(get_app_settings)) -> MediaEventRepository:
+    """``media_events`` as c1_app; 503 when Mongo is not configured."""
+    if not settings.mongo_url:
+        raise ApiError(
+            503, "dependency_unavailable", "MongoDB is not configured", {"source": "mongo"}
+        )
+    return MediaEventRepository(get_mongo_db(settings.mongo_url)[MEDIA_EVENTS])
+
+
+def get_storage(request: Request) -> MediaStorage:
+    """The S3 gateway built once in ``create_app`` (tests replace it with a fake)."""
+    return request.app.state.storage
 
 
 def _forbidden(message: str) -> HTTPException:

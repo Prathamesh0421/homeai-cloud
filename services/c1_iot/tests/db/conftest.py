@@ -13,7 +13,11 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from app.api.deps import get_session
+from app.api.deps import (
+    get_media_repo,
+    get_session,
+    get_storage,
+)
 from app.main import create_app
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
@@ -34,6 +38,7 @@ from tests.factories import (
     make_house,
     make_room,
 )
+from tests.fakes import FakeMediaRepo, FakeStorage
 
 SERVICE_DIR = Path(__file__).resolve().parents[2]
 # Tests connect as the Postgres superuser (to drop and rebuild schema c1); the reader grants
@@ -119,10 +124,22 @@ def seeded(session) -> Session:
 
 
 @pytest.fixture
-def api(settings, seeded) -> Iterator[TestClient]:
-    """TestClient whose requests share the test's rolled-back session."""
+def storage() -> FakeStorage:
+    return FakeStorage()
+
+
+@pytest.fixture
+def media() -> FakeMediaRepo:
+    return FakeMediaRepo()
+
+
+@pytest.fixture
+def api(settings, seeded, storage, media) -> Iterator[TestClient]:
+    """TestClient whose requests share the test's rolled-back session; S3 and Mongo are fakes."""
     app = create_app(settings, checks={})
     app.dependency_overrides[get_session] = lambda: seeded
+    app.dependency_overrides[get_storage] = lambda: storage
+    app.dependency_overrides[get_media_repo] = lambda: media
     with TestClient(app, raise_server_exceptions=False) as c:
         yield c
 
