@@ -315,13 +315,13 @@ export default function RulesPage() {
       ) : (
         <div className="space-y-4">
           {/* Sticky-ish header row legend */}
-          <div className={`hidden grid-cols-12 gap-2 px-3 text-xs font-medium uppercase tracking-wide text-muted sm:grid`}>
-            <span className="col-span-3">Alert type</span>
+          <div className="hidden grid-cols-12 gap-2 px-3 text-xs font-medium uppercase tracking-wide text-muted sm:grid">
+            <span className="col-span-2">Alert type</span>
             <span className="col-span-3">Applies to</span>
             <span className="col-span-2">Min conf.</span>
             <span className="col-span-2">Severity</span>
             {anyFalsePos && <span className="col-span-1 tnum">FP 30d</span>}
-            <span className="col-span-1 text-right">Enabled</span>
+            <span className={`${anyFalsePos ? "col-span-2" : "col-span-3"} text-right`}>Actions</span>
           </div>
 
           {groups.map(([tenantId, tenantRules]) => {
@@ -344,7 +344,7 @@ export default function RulesPage() {
                         key={r.rule_id}
                         className="grid grid-cols-12 items-center gap-2 px-3 py-2.5 text-sm hover:bg-surface-2"
                       >
-                        <span className="col-span-3">
+                        <span className="col-span-2">
                           <span className="block font-medium text-ink">{r.alert_type_name}</span>
                           <span className="block text-xs text-muted">{r.trigger_labels.map(labelText).join(", ")}</span>
                         </span>
@@ -359,7 +359,9 @@ export default function RulesPage() {
                           {r.severity === null && <span className="text-xs text-muted">default</span>}
                         </span>
                         {anyFalsePos && <span className="col-span-1 tnum text-muted">{r.false_positive_count_30d}</span>}
-                        <span className="col-span-1 flex items-center justify-end gap-2">
+                        <span
+                          className={`${anyFalsePos ? "col-span-2" : "col-span-3"} flex items-center justify-end gap-2`}
+                        >
                           <Button variant="ghost" size="sm" onClick={() => setEditing({ mode: "edit", rule: r })}>
                             Edit
                           </Button>

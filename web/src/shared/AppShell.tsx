@@ -78,12 +78,15 @@ export function AppShell() {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
 
-  // Open-alert count for the Alerts badge. Cheap: page size 1, we only need total.
+  // Open-alert count for the Alerts badge. Only house_owner / cloud_staff can list
+  // alerts; iot_staff would get 403 every 15 s.
+  const canPollOpenAlerts =
+    session?.role === "house_owner" || session?.role === "cloud_staff";
   const openAlerts = useQuery({
     queryKey: ["c2", "alerts", "open-count", "badge"],
     queryFn: () => listAlerts({ status: ["open", "acknowledged"], page: 1, pageSize: 1 }),
     refetchInterval: 15_000,
-    enabled: Boolean(session),
+    enabled: Boolean(session) && canPollOpenAlerts,
   });
 
   if (!session) return null;

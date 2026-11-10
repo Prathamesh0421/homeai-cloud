@@ -1,7 +1,7 @@
 /** AlertDrawer: side Sheet showing an alert's clip, confidences, timeline, and actions.
  *  Reuses the same alertAction mutation as the full AlertDetailPage. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { alertAction, c2Keys, getAlert, type AlertAction, type AlertDetail } from "../../api/c2";
 import { ApiError } from "../../api/http";
@@ -20,7 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
-import { ClipPlayer } from "../../shared/ClipPlayer";
+import { FalsePositiveDialog } from "./FalsePositiveDialog";
 import { formatWhen, labelText, percent, timelineLabel } from "./format";
 
 const ACTION_DONE: Record<AlertAction, string> = {
@@ -38,6 +38,13 @@ export function AlertDrawer({ alertId, onOpenChange }: AlertDrawerProps) {
   const queryClient = useQueryClient();
   const { push } = useToasts();
   const [note, setNote] = useState("");
+  const [confirmFp, setConfirmFp] = useState(false);
+
+  // Reset draft note / FP dialog when opening a different alert (or closing).
+  useEffect(() => {
+    setNote("");
+    setConfirmFp(false);
+  }, [alertId]);
 
   const alert = useQuery({
     queryKey: c2Keys.alert(alertId ?? ""),
@@ -52,6 +59,7 @@ export function AlertDrawer({ alertId, onOpenChange }: AlertDrawerProps) {
       queryClient.setQueryData(c2Keys.alert(alertId!), updated);
       queryClient.invalidateQueries({ queryKey: ["c2", "alerts"] });
       setNote("");
+      setConfirmFp(false);
       push({ tone: "success", message: ACTION_DONE[action] });
     },
     onError: (error) => {
@@ -91,12 +99,14 @@ export function AlertDrawer({ alertId, onOpenChange }: AlertDrawerProps) {
             </SheetHeader>
 
             <div className="space-y-5 px-5 pb-6">
-              {/* Clip / waveform stub */}
+              {/* STANDIN(C1-07): clip playback comes from C1 GET /clips/{media_id}/playback-url (C2-11). */}
               <section>
                 <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
                   Recording
                 </h3>
-                <ClipPlayer clipId={a.evidence.media_id} />
+                <div className="rounded-md border border-dashed border-border-strong bg-canvas p-4 text-center text-sm text-muted">
+                  Clip playback is not available yet.
+                </div>
               </section>
 
               {/* Confidence */}
@@ -134,7 +144,7 @@ export function AlertDrawer({ alertId, onOpenChange }: AlertDrawerProps) {
                 <section className="space-y-3 border-t border-border pt-4">
                   <div>
                     <label htmlFor="drawer-note" className="block text-xs font-medium text-muted">
-                      Note (optional)
+                      Note (optional, saved with Acknowledge or Resolve)
                     </label>
                     <textarea
                       id="drawer-note"
@@ -152,16 +162,23 @@ export function AlertDrawer({ alertId, onOpenChange }: AlertDrawerProps) {
                     <Button variant="secondary" disabled={!can("resolve")} onClick={() => act.mutate({ action: "resolve", text: note })}>
                       Resolve
                     </Button>
-                    <Button variant="danger" disabled={!can("false_positive")} onClick={() => act.mutate({ action: "false_positive", text: note })}>
+                    <Button variant="danger" disabled={!can("false_positive")} onClick={() => setConfirmFp(true)}>
                       Mark false positive
                     </Button>
                   </div>
                 </section>
               )}
             </div>
+
           </>
         )}
       </SheetContent>
+      <FalsePositiveDialog
+        open={confirmFp}
+        busy={act.isPending}
+        onCancel={() => setConfirmFp(false)}
+        onConfirm={(reason) => act.mutate({ action: "false_positive", text: reason })}
+      />
     </Sheet>
   );
 }

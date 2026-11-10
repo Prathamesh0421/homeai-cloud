@@ -83,6 +83,7 @@ logs/
 
 # ---------- Web build output (tsc -b compiles vite.config.ts) ----------
 web/vite.config.js
+web/vite.config.d.ts
 
 .claude
 .cursor
