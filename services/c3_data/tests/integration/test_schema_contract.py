@@ -56,47 +56,69 @@ def _role(conn, role: str):
 
 # -- review item 1: rooms scoped through house ---------------------------------------------
 def test_rooms_scoped_through_house_by_tenant():
+    """Rooms have no tenant_id; the scope must reach them through their house (Rev4 §11).
+
+    C1 has shipped (``c1.houses``/``c1.rooms`` are real tables now), so this seeds rows into the
+    real tables rather than fabricating stand-ins. It keys everything to unique UUIDs and a
+    unique room name per house, and cleans up by DELETE-ing only its own rows — it never drops
+    C1's tables (dropping them would break C1's ``camera_feeds`` FK). Skips if C1 is absent.
+    """
     eng = _engine()
     acme, sunrise = str(uuid.uuid4()), str(uuid.uuid4())
     maple, pine = str(uuid.uuid4()), str(uuid.uuid4())
     kitchen, bedroom = str(uuid.uuid4()), str(uuid.uuid4())
+    # Unique room names so the (house_id, name) unique constraint never collides with seed data.
+    tag = uuid.uuid4().hex[:8]
     try:
+        with eng.connect() as conn:
+            exists = conn.execute(
+                text(
+                    "SELECT to_regclass('c1.rooms') IS NOT NULL AND "
+                    "to_regclass('c1.houses') IS NOT NULL"
+                )
+            ).scalar_one()
+            if not exists:
+                pytest.skip("c1.houses/c1.rooms not in this DB (c1 not migrated here)")
+
         with eng.begin() as conn:
-            # Create stand-in c1 tables as the c1 owner (c1 has not shipped its migration).
-            with _role(conn, "c1_app"):
-                try:
-                    conn.execute(
-                        text(
-                            "CREATE TABLE c1.houses (house_id uuid primary key, tenant_id uuid, "
-                            "name text, created_at timestamptz default now(), "
-                            "deleted_at timestamptz)"
-                        )
-                    )
-                    conn.execute(
-                        text(
-                            "CREATE TABLE c1.rooms (room_id uuid primary key, house_id uuid, "
-                            "name text, room_type text, created_at timestamptz default now())"
-                        )
-                    )
-                except ProgrammingError:
-                    pytest.skip("cannot create stand-in c1 tables (c1 may have shipped)")
-                conn.execute(text("GRANT SELECT ON c1.houses, c1.rooms TO c3_reader"))
+            # Seed C1's real tables on the plain connection. We do not SET ROLE here: the owner of
+            # the c1 tables (the superuser in the compose/CI DB, c1_app on RDS) can write, and the
+            # seed role is just plumbing — the scope assertion below is what runs as c3_reader. If
+            # the DSN role cannot write c1 (a non-owner local DSN), skip rather than fail.
+            try:
                 conn.execute(
                     text(
-                        "INSERT INTO c1.houses (house_id, tenant_id, name) VALUES "
-                        "(:h1,:t1,'Maple'), (:h2,:t2,'Pine')"
+                        "INSERT INTO c1.houses (house_id, tenant_id, name, timezone) VALUES "
+                        "(:h1,:t1,:n1,'UTC'), (:h2,:t2,:n2,'UTC')"
                     ),
-                    {"h1": maple, "t1": acme, "h2": pine, "t2": sunrise},
+                    {
+                        "h1": maple,
+                        "t1": acme,
+                        "n1": f"Maple-{tag}",
+                        "h2": pine,
+                        "t2": sunrise,
+                        "n2": f"Pine-{tag}",
+                    },
                 )
                 conn.execute(
                     text(
                         "INSERT INTO c1.rooms (room_id, house_id, name, room_type) VALUES "
-                        "(:r1,:h1,'Kitchen','kitchen'), (:r2,:h2,'Bedroom','bedroom')"
+                        "(:r1,:h1,:rn1,'kitchen'), (:r2,:h2,:rn2,'bedroom')"
                     ),
-                    {"r1": kitchen, "h1": maple, "r2": bedroom, "h2": pine},
+                    {
+                        "r1": kitchen,
+                        "h1": maple,
+                        "rn1": f"Kitchen-{tag}",
+                        "r2": bedroom,
+                        "h2": pine,
+                        "rn2": f"Bedroom-{tag}",
+                    },
                 )
+            except ProgrammingError as exc:
+                pytest.skip(f"cannot seed c1 tables with this DSN role: {type(exc.orig).__name__}")
 
-            # Read as c3_reader (the role the Records API uses).
+            # Read as c3_reader (the role the Records API uses); c3_reader already has SELECT on
+            # c1.* from C1's migration / init.sql.
             with _role(conn, "c3_reader"):
                 q = RecordQuery(conn, None)
                 rows, total = q.list(
@@ -110,7 +132,7 @@ def test_rooms_scoped_through_house_by_tenant():
                     limit=25,
                 )
                 assert total == 1
-                assert rows[0]["name"] == "Kitchen"
+                assert rows[0]["name"] == f"Kitchen-{tag}"
 
                 rows, total = q.list(
                     "rooms",
@@ -123,11 +145,19 @@ def test_rooms_scoped_through_house_by_tenant():
                     limit=25,
                 )
                 assert total == 1
-                assert rows[0]["name"] == "Bedroom"
+                assert rows[0]["name"] == f"Bedroom-{tag}"
     finally:
-        with eng.begin() as conn, _role(conn, "c1_app"):
-            conn.execute(text("DROP TABLE IF EXISTS c1.rooms"))
-            conn.execute(text("DROP TABLE IF EXISTS c1.houses"))
+        # Clean up only our own rows (rooms first for the FK), never the tables. Plain connection
+        # (same owner role as the seed); suppress if seeding never happened.
+        with contextlib.suppress(Exception), eng.begin() as conn:
+            conn.execute(
+                text("DELETE FROM c1.rooms WHERE room_id = ANY(:ids)"),
+                {"ids": [kitchen, bedroom]},
+            )
+            conn.execute(
+                text("DELETE FROM c1.houses WHERE house_id = ANY(:ids)"),
+                {"ids": [maple, pine]},
+            )
         eng.dispose()
 
 
