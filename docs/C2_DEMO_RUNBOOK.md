@@ -11,17 +11,22 @@ Rubric (06 §4): every C2 function through the UI, backend proof, edge cases, un
 
 Commands marked **EC2** run on the host from the laptop, e.g.
 `ssh homeai-ec2 'cd ~/homeai-cloud && make demo-c2-detect ARGS="--label glass_break --conf 0.78"'`.
-Steps marked **⏳ C1** need C1's `houses`/`rooms` tables on RDS (C2 answers 503 without them).
+C1 is deployed on EC2 (11 Nov), so every step below runs there; the full path (upload in C1 → C3 →
+C2 → 3 emails → Alert View on the phone with the clip) was run end to end on 11 Nov.
+
+**Nobody redeploys during rehearsal or the demo.** A rebuild of `c2-alerts` while C3 hands a
+detection over leaves that detection `pending` (no alert, no automatic resend): this happened on
+11 Nov. Agree a quiet window with the team.
 
 ## 1. Before (day before, then 1 hour before)
 | | Step | How |
 |---|---|---|
-| ☐ | Instance running, all 6 containers up | Console → EC2 → Start; then **EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --profile gateway --profile c3 up -d` (no restart policy) |
+| ☐ | Instance running, all 7 containers up (c1-iot, c2-alerts, c3-data, c3-worker, c4-dashboard, caddy, mongo) | Console → EC2 → Start; then **EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --profile gateway --profile c3 --profile c1 up -d` (no restart policy) |
 | ☐ | C2 healthy | `curl http://44.226.166.194/api/v1/health/c2` → `"status":"ok"` |
 | ☐ | SNS subscriptions confirmed | SNS console, topic `homeai-house-22222222-0000-0000-0000-0000000000a1`: 3 × confirmed |
 | ☐ | Clean alerts | **EC2** `make demo-c2-reset ARGS=--yes` |
 | ☐ | Quiet hours back to normal | **EC2** `make demo-c2-quiet-hours ARGS="--set 22:00-07:00"` (step 5 changes them) |
-| ☐ | Tests run green | laptop `make test-c2-full` (482 passed, 99%) |
+| ☐ | Tests run green | laptop `make test-c2-full` (499 passed, 99.96%, ~20 s) |
 | ☐ | Tabs open | 1 ops → Alert Rules · 2 Maple owner → Alerts · 3 Swagger · 4 SNS console · 5 terminal |
 | ☐ | Phone | Gmail open, notifications on; browser zoom 110% on the laptop |
 | ☐ | Rehearsed twice | this page, top to bottom |
@@ -33,7 +38,7 @@ and the SNS topics; it only *reads* C4 settings/contacts, C1 houses/rooms, C3 de
 
 **0:30–2:00 · Alert Rules (tab 1, `ops@homeai.test`).**
 1. Show the tenant defaults (7 per tenant): severity, min confidence, enabled, false positives (30 d).
-2. ⏳ C1 · **New rule** → One house = Maple `22222222-0000-0000-0000-0000000000a1`, type *Possible
+2. **New rule** → One house = Maple `22222222-0000-0000-0000-0000000000a1`, type *Possible
    fall*, room Bathroom `33333333-0000-0000-0000-00000000a104`, min confidence `0.70` → created.
 3. **Duplicate**: the same rule again → toast `409 duplicate_rule`. (No C1 needed: **New rule** →
    Tenant default, Acme Care, *Glass break* → 409, the default already exists.)
@@ -42,30 +47,45 @@ and the SNS topics; it only *reads* C4 settings/contacts, C1 houses/rooms, C3 de
    `"trigger_labels": ["banana"]` → `422` with `details: [{field, issue}]`.
 5. **Disable** a rule → confirm dialog → Off; **Enable** it again.
 
-**2:00–4:30 · An alert end to end.** ⏳ C1
-1. Trigger. Real path: in C1 (log in as `iot@acme.test`) upload `glass_break.wav` to a Maple feed
-   in Feed Detail → C3 classifies it → C2 raises the alert. Fallback that still plays a real clip:
-   copy that clip's media id from C1's Clip Library, then
-   **EC2** `make demo-c2-detect ARGS="--label glass_break --conf 0.78 --media-id <clip id>"` →
+**2:00–4:30 · An alert end to end.**
+1. Trigger. Real path: in C1 (log in as `iot@acme.test`) → Feeds → **Maple St · Kitchen Mic**
+   (`66666666-…-00000000a101`, audio, enabled) → upload `demo_clips/glass_break.wav` → C3 classifies
+   it → C2 raises the alert, ~1.5 s after the upload. Every house has a "Kitchen Mic": check the house
+   column (an upload to Oak's raises an Oak alert with no emails, as Oak has no contacts).
+   `glass_break.wav` scores **0.557** against Maple's threshold **0.55** (medium sensitivity): it
+   passes every time (same file, same model), but only just; if C3's model changes, re-check it.
+   Fallback when C3 is down: the clip stays unclassified, so copy its media id from C1's Clip
+   Library, then **EC2** `make demo-c2-detect ARGS="--label glass_break --conf 0.78 --media-id <clip id>"` →
    `C2 answered 201 … "decision": "alert"`; note the printed `--resend <detection_id>`.
-   (Without `--media-id` the alert works but shows "The recording is not available".)
+   `--media-id` only works for a clip C3 has **not** classified (C3 keeps one detection per clip:
+   index `ux_media_id`; a classified clip gives `DuplicateKeyError`). Without `--media-id` the alert
+   works but shows "The recording is not available".
 2. Tab 2 (Maple owner) → **Alerts**: the alert appears within 15 s (polling) — *Glass break*, high,
-   Entryway, open.
+   **Kitchen**, open. Clicking the row opens the side panel (recording, what was heard, timeline,
+   actions); click the **alert name** to open the full Alert Detail page.
 3. Phone: 3 emails, Alice → Bob → Carol (subject `[HomeAI] HIGH Glass break - Maple St`). Open one
-   → **Alert View**, no login: type, severity, room, what was heard, "call 911". No owner PII.
-4. **Alert Detail**: **Play recording** (C1 clip, C2-11), labels with the threshold, timeline,
-   contacts (sent / pending), demo link. The phone's Alert View plays the same clip.
-   *Resolve* is disabled while open → **Acknowledge** with a note → **Resolve**. The phone's Alert
-   View updates within 30 s.
+   → **Alert View**, no login: type, severity, room, what was heard, "call 911", **Play recording**
+   (C2 fetches the clip URL from C1 with its own service token). No owner PII.
+4. **Alert Detail** (via the alert name): **Play recording** (C1 clip, C2-11, the owner's login),
+   labels with the threshold, timeline, **Contacts notified** (only on this page, not in the side
+   panel: in-app + Alice/Bob/Carol sent, each with a demo link). *Resolve* is disabled while open →
+   type a note, then **Acknowledge** → type a note, then **Resolve** (notes are optional: type them
+   before clicking, or the timeline shows none). The phone's Alert View updates within 30 s.
 5. Swagger (tab 3): `POST /alerts/{id}/resolve` on an *open* alert → `409 invalid_state {from, to}`.
+   Raise one first if none is open (the quiet-hours glass break below leaves one open).
 
-**4:30–5:45 · Rules and edge cases.**
-| Show | Command (**EC2**) | Expected |
+**4:30–5:45 · Rules and edge cases.** All rows except "room rule wins" were run on EC2 on 11 Nov
+with the results shown. The glass break in quiet hours sends 3 more emails.
+The two quiet-hours rows use **real uploads** (Maple St · Kitchen Mic), so the alert has a recording.
+A `make demo-c2-detect` detection without `--media-id` gets a made-up clip id, and its emails open
+an Alert View with "The recording is not available". Use the script for the rows that need no
+recording, and as the fallback for the quiet-hours rows if C3 is down (same command with `--label`).
+| Show | Command (**EC2**) / action | Expected |
 |---|---|---|
-| Quiet hours hold low alerts | `make demo-c2-quiet-hours ARGS=--cover-now`, then `make demo-c2-detect ARGS="--label cough --conf 0.80"` | `no_alert`, reason `quiet_hours`; nothing in Alerts |
-| …but not high ones | `make demo-c2-detect ARGS="--label glass_break --conf 0.80"` | `alert` (high bypasses quiet hours), emails sent |
+| Quiet hours hold low alerts | `make demo-c2-quiet-hours ARGS=--cover-now`, then upload `cough.wav` (fallback `make demo-c2-detect ARGS="--label cough --conf 0.80"`) | `no_alert`, reason `quiet_hours` (C2 log `evaluate decision`); nothing in Alerts. Check in the first rehearsal that C3 labels `cough.wav` as `cough` at ≥ 0.55; script result checked 11 Nov |
+| …but not high ones | upload `glass_break.wav` (fallback `make demo-c2-detect ARGS="--label glass_break --conf 0.80"`) | `alert` (high bypasses quiet hours), emails sent, recording plays |
 | Below threshold | `make demo-c2-detect ARGS="--label glass_break --conf 0.40"` | `no_alert`, `below_threshold` (0.55) |
-| Room rule wins (⏳ C1, after step 2.2) | `make demo-c2-detect ARGS="--label fall_indicator --conf 0.68 --room Bathroom"` | `no_alert`, `below_threshold` (room rule 0.70, not the default 0.65) |
+| Room rule wins (after step 2.2) | `make demo-c2-detect ARGS="--label fall_indicator --conf 0.68 --room Bathroom"` | `no_alert`, `below_threshold` (room rule 0.70, not the default 0.65) |
 | Idempotency | `make demo-c2-detect ARGS="--resend <detection_id>"` | `duplicate: true`, same `alert_id`, no new email |
 | Expired link | `make demo-c2-expired-link` → open the printed link | "This link has expired" (API `401 token_expired`); change one character → "not valid" (404) |
 | Isolation | log in as `owner.oak@acme.test` → Alerts | Maple's alerts are not there |
@@ -75,8 +95,8 @@ SNS console → the Maple topic → 3 confirmed subscriptions, each with its `co
 logs: **EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml logs --tail 30 c2-alerts`
 (the `subscription sync` and `evaluate` lines).
 
-**6:45–7:30 · Tests and deployment.** Laptop `make test-c2-full` → 482 passed, coverage 99%;
-**EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --profile gateway --profile c3 ps`.
+**6:45–7:30 · Tests and deployment.** Laptop `make test-c2-full` → 499 passed, coverage 99.96%;
+**EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --profile gateway --profile c3 --profile c1 ps`.
 
 **After.** **EC2** `make demo-c2-quiet-hours ARGS="--set 22:00-07:00"` and `make demo-c2-reset ARGS=--yes`.
 
@@ -84,15 +104,18 @@ logs: **EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compos
 | Problem | Do |
 |---|---|
 | "The recording is not available" | The alert's `media_id` is not a C1 clip (fake detection without `--media-id`), or C1 is down |
-| Evaluate answers 503 `c1` | C1's tables are missing on RDS: show the rule engine with the local stack instead (`docs/03` §4), or the decision tables in the unit tests |
+| Upload done but no alert | **EC2** `docker compose … logs --since 5m c3-worker c2-alerts`: `handoff failed; marking pending` = C2 was down at that moment (redeploy): upload again. `below_threshold` = the clip scored too low |
+| `make demo-c2-detect --media-id` → `DuplicateKeyError` | That clip already has C3's detection: use a clip C3 has not classified, or drop `--media-id` |
+| Evaluate answers 503 `c1` | C1 is down or its tables are missing: show the rule engine with the local stack instead (`docs/03` §4), or the decision tables in the unit tests |
 | Email slow / in spam | Show the alert's contacts (sent) in Alert Detail and open the link from there (DEMO_MODE `view_link`) |
 | Site down | Console → instance running? Then the `up -d` command from §1 |
 | `make demo-c2-detect` refused | `ENV=prod` needs `DEMO_MODE=1` in the host's `.env` |
 
 ## 4. Scenario video (~5 min, C2 plan §10.2 "Night-time break-in at Maple St")
-Title card (10 s) → quiet hours on (`--cover-now`) → glass break during quiet hours → high alert
+Title card (10 s) → quiet hours on (`--cover-now`) → upload `glass_break.wav` to Maple Kitchen Mic
+during quiet hours (a real upload, so the neighbor's view can play the clip) → high alert
 bypasses them → 3 emails in order on the phone → neighbor (Carol) opens the signed link → owner
-acknowledges, checks the evidence, resolves with a note → a cough during quiet hours is held (no
-alert) → ops tunes the rule after a false positive (*Mark false positive* in Alert Detail, then the
+acknowledges, checks the evidence, resolves with a note → a cough during quiet hours is held (upload
+`cough.wav`; no alert) → ops tunes the rule after a false positive (*Mark false positive* in Alert Detail, then the
 rule's false-positive count in Alert Rules). Show the EC2 URL in the address bar once and one
 backend view (Swagger or SNS). Record twice, keep the better take; ≤ 7 min, MP4.
