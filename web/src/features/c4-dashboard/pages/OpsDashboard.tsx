@@ -23,6 +23,8 @@ import { Button } from "@/components/ui/button";
 import { SEED_HOUSES } from "../houseOptions";
 
 const POLL_MS = 15_000;
+/** Radix Select forbids value=""; use a sentinel for "all". */
+const ALL = "__all__";
 
 const RANGE_PRESETS: { value: DashboardRange; label: string }[] = [
   { value: "24h", label: "24h" },
@@ -104,18 +106,15 @@ function SeverityTimeline({ alerts }: { alerts: { alert_id: string; house_name: 
   );
 }
 
-// Radix Select forbids value=""; this sentinel is the "All tenants" / "All houses" choice.
-const ALL = "__all__";
-
 export default function OpsDashboard() {
   const [range, setRange] = useState<DashboardRange>("24h");
-  const [tenantId, setTenantId] = useState("");
-  const [houseId, setHouseId] = useState("");
+  const [tenantId, setTenantId] = useState(ALL);
+  const [houseId, setHouseId] = useState(ALL);
 
   const tenantsQ = useQuery({ queryKey: ["c4", "tenants"], queryFn: fetchTenants });
 
   const houses = useMemo(() => {
-    if (!tenantId) return SEED_HOUSES;
+    if (!tenantId || tenantId === ALL) return SEED_HOUSES;
     const tenant = tenantsQ.data?.find((t) => t.tenant_id === tenantId);
     if (!tenant) return SEED_HOUSES;
     const alias = tenant.name.toLowerCase().includes("sunrise")
@@ -132,8 +131,8 @@ export default function OpsDashboard() {
     queryFn: () =>
       fetchDashboardSummary({
         range,
-        tenantId: tenantId || undefined,
-        houseId: houseId || undefined,
+        tenantId: tenantId === ALL ? undefined : tenantId,
+        houseId: houseId === ALL ? undefined : houseId,
       }),
     refetchInterval: POLL_MS,
   });
@@ -170,10 +169,10 @@ export default function OpsDashboard() {
         </div>
         <FilterSelect
           label="Tenant"
-          value={tenantId || ALL}
+          value={tenantId}
           onValueChange={(v) => {
-            setTenantId(v === ALL ? "" : v);
-            setHouseId("");
+            setTenantId(v);
+            setHouseId(ALL);
           }}
           options={[
             { value: ALL, label: "All tenants" },
@@ -184,8 +183,8 @@ export default function OpsDashboard() {
         />
         <FilterSelect
           label="House"
-          value={houseId || ALL}
-          onValueChange={(v) => setHouseId(v === ALL ? "" : v)}
+          value={houseId}
+          onValueChange={setHouseId}
           options={[
             { value: ALL, label: "All houses" },
             ...houses.map((h) => ({ value: h.house_id, label: h.name })),

@@ -128,7 +128,7 @@ export default function AlertsPage() {
     alerts.isPlaceholderData,
   );
 
-  // "Live · updated Xs ago" indicator.
+  // "Live · updated Xs ago" indicator (ticker is NOT in aria-live — only "Refreshing…" is).
   const [updatedAgo, setUpdatedAgo] = useState<number | null>(null);
   const lastFetchedAt = useRef<number | null>(null);
   useEffect(() => {
@@ -144,6 +144,7 @@ export default function AlertsPage() {
     return () => window.clearInterval(t);
   }, []);
 
+  // Reset baseline when filters/page change so those rows are not treated as "fresh".
   const freshIds = useArrivedIds(alerts.data?.data, JSON.stringify(filters), alerts.isPlaceholderData);
 
   // House filter: the owner's houses, plus any house seen in results (names come from C1;
@@ -253,18 +254,20 @@ export default function AlertsPage() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Alerts</h1>
-        {/* No aria-live: this text changes every second. New critical alerts are announced
-            by the role="alert" banner below. */}
+        {/* Ticker is not aria-live (would announce every second). "Refreshing…" is live;
+            new critical alerts use the role="alert" banner below. */}
         <span className="inline-flex items-center gap-1.5 text-xs text-muted">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60" aria-hidden="true" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-success" aria-hidden="true" />
+          <span className="relative flex h-2 w-2" aria-hidden="true">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
           </span>
-          {alerts.isFetching
-            ? "Refreshing…"
-            : updatedAgo === null
-              ? "Live"
-              : `Live · updated ${updatedAgo}s ago`}
+          {alerts.isFetching ? (
+            <span aria-live="polite">Refreshing…</span>
+          ) : updatedAgo === null ? (
+            <span>Live</span>
+          ) : (
+            <span>Live · updated {updatedAgo}s ago</span>
+          )}
         </span>
       </div>
 

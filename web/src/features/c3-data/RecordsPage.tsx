@@ -24,6 +24,8 @@ import { useAuth } from "../../auth/AuthProvider";
 import { DataTable, EmptyState, ErrorState, FilterSelect, Pagination, type Column } from "../../shared";
 
 const PAGE_SIZE = 25;
+/** Radix Select forbids value=""; use a sentinel for "all". */
+const ALL = "__all__";
 
 // A small, readable set of columns per entity; the row drawer shows the full JSON.
 const PREVIEW_COLUMNS: Record<RecordEntity, string[]> = {
@@ -92,7 +94,10 @@ export default function RecordsPage() {
     enabled: isCloud,
   });
   const tenantOptions = useMemo(
-    () => (tenantsQ.data ?? []).map((t) => ({ value: t.tenant_id, label: t.name })),
+    () => [
+      { value: ALL, label: "All tenants" },
+      ...(tenantsQ.data ?? []).map((t) => ({ value: t.tenant_id, label: t.name })),
+    ],
     [tenantsQ.data],
   );
 
@@ -101,7 +106,10 @@ export default function RecordsPage() {
     queryFn: () => listHouses({ tenantId: tenantId || undefined, pageSize: 100 }),
   });
   const houseOptions = useMemo(
-    () => (housesQ.data?.data ?? []).map((h) => ({ value: h.house_id, label: h.name })),
+    () => [
+      { value: ALL, label: "All houses" },
+      ...(housesQ.data?.data ?? []).map((h) => ({ value: h.house_id, label: h.name })),
+    ],
     [housesQ.data],
   );
 
@@ -157,8 +165,8 @@ export default function RecordsPage() {
         {isCloud && (
           <FilterSelect
             label="Tenant"
-            value={tenantId}
-            onValueChange={(v) => setParam("tenant", v)}
+            value={tenantId || ALL}
+            onValueChange={(v) => setParam("tenant", v === ALL ? "" : v)}
             options={tenantOptions}
             placeholder="All tenants"
             className="w-[12rem]"
@@ -166,8 +174,8 @@ export default function RecordsPage() {
         )}
         <FilterSelect
           label="House"
-          value={houseId}
-          onValueChange={(v) => setParam("house", v)}
+          value={houseId || ALL}
+          onValueChange={(v) => setParam("house", v === ALL ? "" : v)}
           options={houseOptions}
           placeholder="All houses"
           className="w-[12rem]"
