@@ -130,7 +130,7 @@ is_enabled, connectivity_status, config, config_version, last_clip_at, created_a
 | Method & path | Access | Request | Response / rules |
 |---|---|---|---|
 | `POST /ingest/clip` | iot_staff/cloud_staff JWT or service `ingest:write` | multipart: `feed_id, media_kind, captured_at, client_clip_id?, file` | 201 `{media_id, status:"queued", s3_key, duplicate:false}`; 200 `duplicate:true`; errors per decision table §4.1 |
-| `GET /clips` | S, O | `house_id, feed_id, room_id, status, from, to, page, page_size` | `{media_id, feed_id, feed_name, room_name, media_kind, captured_at, uploaded_at, size, status, detection_id}` |
+| `GET /clips` | S, O | `house_id, feed_id, room_id, status, from, to, page, page_size` | `{media_id, house_id, house_name, feed_id, feed_name, room_id, room_name, media_kind, captured_at, uploaded_at, size, status, detection_id, top_label}` **[D3: house and top label added]** |
 | `GET /clips/{media_id}` | S, O | — | full record + `top_label` (read from `ai_detections` if present, optional) |
 | `GET /clips/{media_id}/playback-url` | S, O, service `clips:playback` | — | `{url, expires_at}` (15 min presign) |
 Limits: file ≤ 50 MB (`413`), content types `audio/wav`, `audio/x-wav`, `audio/mpeg`, `video/mp4`;

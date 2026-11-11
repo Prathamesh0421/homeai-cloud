@@ -17,6 +17,7 @@ class IngestOut(BaseModel):
 class ClipOut(BaseModel):
     media_id: str
     house_id: str
+    house_name: str | None  # tells same-named feeds of different houses apart
     feed_id: str
     feed_name: str | None
     room_id: str | None

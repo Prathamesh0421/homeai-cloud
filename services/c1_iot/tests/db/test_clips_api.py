@@ -79,6 +79,9 @@ def test_staff_lists_tenant_clips_newest_first_with_names(api, staff, clips):
     assert ids(resp) == [clips["maple_new"], clips["oak"], clips["maple_old"]]
     first = resp.json()["data"][0]
     assert (first["feed_name"], first["room_name"]) == ("Kitchen Mic", "Kitchen")
+    # Every house may have a "Kitchen Mic": the house name tells them apart.
+    names = {c["media_id"]: c["house_name"] for c in resp.json()["data"]}
+    assert (names[clips["maple_new"]], names[clips["oak"]]) == ("Maple St", "Oak Ave")
     assert first["captured_at"] == "2026-11-10T12:05:00Z"
     assert resp.json()["meta"]["total"] == 3
 
