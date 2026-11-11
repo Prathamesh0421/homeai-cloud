@@ -100,7 +100,7 @@ Access: **CS** cloud_staff, **IS** iot_staff, **O** house_owner, **svc** service
 | `POST /models` | CS | `{name:"yamnet", version, base_model_id?, label_map?, notes?}` — clones label map from `base_model_id` (default active) when omitted | 201 status `registered`; 409 duplicate version; 422 invalid label map |
 | `POST /models/{id}/artifact` | CS | multipart `.zip` of a TF SavedModel ≤ 200 MB | uploads to `s3://.../models/{name}/{version}/`, sets `source=s3`; optional (stretch) |
 | `PUT /models/{id}/label-map` | CS | label map JSON | 409 `model_active` if active (create a new version instead); status back to `registered` |
-| `POST /models/{id}/evaluate` | CS | `{dataset:"eval-v1"}` | runs evaluation (§4.4) synchronously (≤ 60 s for ~30 clips); stores metrics; status `evaluated`; 200 metrics |
+| `POST /models/{id}/evaluate` | CS | `{dataset:"eval-v1"}` | runs evaluation (§4.4) synchronously (≤ 60 s for ~30 clips); stores metrics; `registered` becomes `evaluated`, while `evaluated`, `active`, and `retired` keep their status; 200 metrics |
 | `POST /models/{id}/activate` | CS | `{confirm:true}` | requires status `evaluated` or `retired` (422 otherwise); previous active → `retired`; transaction; workers switch within 10 s |
 | `POST /models/{id}/retire` | CS | — | 409 if active |
 | `GET /models/deployment` | CS | — | `{active_model:{id,version}, workers:[heartbeat docs], queue:{queued, processing, failed, analyzed_last_hour}, throughput_per_min, p95_latency_ms}` |
