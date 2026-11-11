@@ -82,6 +82,33 @@ export function useNewCriticals(
   return { fresh, dismiss: () => setFresh([]) };
 }
 
+/** Ids of rows (any severity) that a poll of the same filters and page brought in, for
+ * `HIGHLIGHT_MS`. A filter or page change only sets a new baseline, like useNewCriticals. */
+export const HIGHLIGHT_MS = 2000;
+export function useArrivedIds(
+  rows: AlertSummary[] | undefined,
+  queryKey: string,
+  isPlaceholder: boolean,
+): Set<string> {
+  const seen = useRef<{ key: string; ids: Set<string> } | null>(null);
+  const [arrivedIds, setArrivedIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!rows || isPlaceholder) return;
+    const ids = new Set(rows.map((r) => r.alert_id));
+    const before = seen.current;
+    seen.current = { key: queryKey, ids };
+    if (before?.key !== queryKey) return;
+    const arrived = rows.filter((r) => !before.ids.has(r.alert_id)).map((r) => r.alert_id);
+    if (arrived.length) setArrivedIds(new Set(arrived));
+  }, [rows, queryKey, isPlaceholder]);
+  useEffect(() => {
+    if (arrivedIds.size === 0) return;
+    const t = window.setTimeout(() => setArrivedIds(new Set()), HIGHLIGHT_MS);
+    return () => window.clearTimeout(t);
+  }, [arrivedIds]);
+  return arrivedIds;
+}
+
 export default function AlertsPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -117,24 +144,7 @@ export default function AlertsPage() {
     return () => window.clearInterval(t);
   }, []);
 
-  // Briefly highlight rows that arrived in the latest poll (any severity).
-  const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
-  const prevIds = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    const rows = alerts.data?.data;
-    if (!rows || alerts.isPlaceholderData) return;
-    const ids = new Set(rows.map((r) => r.alert_id));
-    if (prevIds.current && prevIds.current.size > 0) {
-      const arrived = [...ids].filter((id) => !prevIds.current!.has(id));
-      if (arrived.length) {
-        setFreshIds(new Set(arrived));
-        const t = window.setTimeout(() => setFreshIds(new Set()), 2000);
-        prevIds.current = ids;
-        return () => window.clearTimeout(t);
-      }
-    }
-    prevIds.current = ids;
-  }, [alerts.data, alerts.isPlaceholderData]);
+  const freshIds = useArrivedIds(alerts.data?.data, JSON.stringify(filters), alerts.isPlaceholderData);
 
   // House filter: the owner's houses, plus any house seen in results (names come from C1;
   // until a house shows up in results it is labelled by the end of its id, which differs).
@@ -243,7 +253,9 @@ export default function AlertsPage() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Alerts</h1>
-        <span className="inline-flex items-center gap-1.5 text-xs text-muted" aria-live="polite">
+        {/* No aria-live: this text changes every second. New critical alerts are announced
+            by the role="alert" banner below. */}
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted">
           <span className="relative flex h-2 w-2">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60" aria-hidden="true" />
             <span className="relative inline-flex h-2 w-2 rounded-full bg-success" aria-hidden="true" />

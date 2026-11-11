@@ -104,6 +104,9 @@ function SeverityTimeline({ alerts }: { alerts: { alert_id: string; house_name: 
   );
 }
 
+// Radix Select forbids value=""; this sentinel is the "All tenants" / "All houses" choice.
+const ALL = "__all__";
+
 export default function OpsDashboard() {
   const [range, setRange] = useState<DashboardRange>("24h");
   const [tenantId, setTenantId] = useState("");
@@ -167,20 +170,26 @@ export default function OpsDashboard() {
         </div>
         <FilterSelect
           label="Tenant"
-          value={tenantId}
+          value={tenantId || ALL}
           onValueChange={(v) => {
-            setTenantId(v);
+            setTenantId(v === ALL ? "" : v);
             setHouseId("");
           }}
-          options={(tenantsQ.data ?? []).map((t) => ({ value: t.tenant_id, label: t.name }))}
+          options={[
+            { value: ALL, label: "All tenants" },
+            ...(tenantsQ.data ?? []).map((t) => ({ value: t.tenant_id, label: t.name })),
+          ]}
           placeholder="All tenants"
           className="w-[12rem]"
         />
         <FilterSelect
           label="House"
-          value={houseId}
-          onValueChange={setHouseId}
-          options={houses.map((h) => ({ value: h.house_id, label: h.name }))}
+          value={houseId || ALL}
+          onValueChange={(v) => setHouseId(v === ALL ? "" : v)}
+          options={[
+            { value: ALL, label: "All houses" },
+            ...houses.map((h) => ({ value: h.house_id, label: h.name })),
+          ]}
           placeholder="All houses"
           className="w-[12rem]"
         />
