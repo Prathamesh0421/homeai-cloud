@@ -24,6 +24,7 @@ detection over leaves that detection `pending` (no alert, no automatic resend): 
 | ☐ | Instance running, all 7 containers up (c1-iot, c2-alerts, c3-data, c3-worker, c4-dashboard, caddy, mongo) | Console → EC2 → Start; then **EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --profile gateway --profile c3 --profile c1 up -d` (no restart policy) |
 | ☐ | C2 healthy | `curl http://44.226.166.194/api/v1/health/c2` → `"status":"ok"` |
 | ☐ | SNS subscriptions confirmed | SNS console, topic `homeai-house-22222222-0000-0000-0000-0000000000a1`: 3 × confirmed |
+| ☐ | (Only for the optional live-topic step, §2 5:45) Oak has no contacts and no topic | Services & settings → Oak Ave: no contacts; SNS: no `homeai-house-…0000000000a2`. C2 never deletes topics: after rehearsing the step, delete that topic in the SNS console (its subscriptions go with it) |
 | ☐ | Clean alerts | **EC2** `make demo-c2-reset ARGS=--yes` |
 | ☐ | Quiet hours back to normal | **EC2** `make demo-c2-quiet-hours ARGS="--set 22:00-07:00"` (step 5 changes them) |
 | ☐ | Tests run green | laptop `make test-c2-full` (499 passed, 99.96%, ~20 s) |
@@ -94,6 +95,28 @@ recording, and as the fallback for the quiet-hours rows if C3 is down (same comm
 SNS console → the Maple topic → 3 confirmed subscriptions, each with its `contact_id` filter policy;
 logs: **EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml logs --tail 30 c2-alerts`
 (the `subscription sync` and `evaluate` lines).
+
+*Optional (~1–2 min, if time allows): a topic and subscription created live.* C2 makes one SNS topic
+per house (`homeai-house-<house_id>`) and one email subscription per C4 emergency contact (filter
+policy on `contact_id`), on the 5-min sync job, on **Sync email subscriptions**, or when an alert
+fires. Use **Oak Ave**: it has no contacts, so no topic yet, and Maple's 3 subscriptions stay as
+they are. Use an address whose inbox is open on a phone (a second address of your own is easiest;
+a teammate's works if they click the AWS link when asked and expect Oak's alert emails afterwards).
+1. `ops@homeai.test` → **Services & settings** → house **Oak Ave** → add an emergency contact
+   (e.g. "Dave Oak", type *neighbor*, that address).
+2. **Alert rules** → **Sync email subscriptions** → toast + summary "… 1 waiting for email
+   confirmation".
+3. SNS console → Topics → new **`homeai-house-22222222-0000-0000-0000-0000000000a2`** → the
+   subscription is *Pending confirmation*, filter policy `{"contact_id": ["…"]}`.
+4. Phone: open "AWS Notification – Subscription Confirmation" → **Confirm subscription**.
+5. **Sync email subscriptions** again → 0 waiting; the subscription has a real ARN in SNS.
+6. (Optional) upload `glass_break.wav` to **Oak**'s Kitchen Mic → only that address is emailed
+   (Oak's sensitivity is `high`: glass-break threshold 0.45).
+
+Afterwards, if the address is not yours: delete the contact in Services & settings → **Sync email
+subscriptions** → "1 removed". Confirm first: AWS does not let C2 remove a *pending* subscription
+(it expires by itself after 3 days). An "unsubscribe" click in any SNS email also removes it; the next
+sync then creates a new one that needs confirming again. Do not re-run the C4 seed after this.
 
 **6:45–7:30 · Tests and deployment.** Laptop `make test-c2-full` → 499 passed, coverage 99.96%;
 **EC2** `docker compose -f infra/docker-compose.yml -f infra/docker-compose.prod.yml --profile gateway --profile c3 --profile c1 ps`.
