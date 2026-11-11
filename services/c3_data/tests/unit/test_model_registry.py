@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+from app.repositories.ml_model_repo import MlModelRepo
 from app.services.model_registry import ModelRegistry
 from homeai_common.errors import ApiError
 
@@ -139,3 +140,31 @@ def test_retire_active_is_409():
     with pytest.raises(ApiError) as e:
         reg.retire("m0")
     assert e.value.status_code == 409
+
+
+@pytest.mark.parametrize(
+    ("starting_status", "expected_status"),
+    [
+        ("registered", "evaluated"),
+        ("evaluated", "evaluated"),
+        ("active", "active"),
+        ("retired", "retired"),
+    ],
+)
+def test_set_metrics_only_promotes_registered_models(starting_status, expected_status):
+    class _Session:
+        def __init__(self):
+            self.flushes = 0
+
+        def flush(self):
+            self.flushes += 1
+
+    session = _Session()
+    model = _Model("m0", "yamnet", "1.0.0", starting_status, _lm())
+    metrics = {"dataset": "eval-v1", "accuracy": 0.875}
+
+    MlModelRepo(session).set_metrics(model, metrics)
+
+    assert model.metrics == metrics
+    assert model.status == expected_status
+    assert session.flushes == 1

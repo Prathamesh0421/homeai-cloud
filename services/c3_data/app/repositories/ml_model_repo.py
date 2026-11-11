@@ -85,8 +85,13 @@ class MlModelRepo:
         return model
 
     def set_metrics(self, model: MlModel, metrics: dict[str, Any]) -> None:
+        # Always store the metrics, but only promote a freshly-registered model to "evaluated".
+        # Evaluating an already-active (or retired) model must NOT change its status: doing so
+        # de-activated the live model when someone re-evaluated it, breaking the deployment until
+        # it was re-activated by hand. "registered" -> "evaluated" is the only status move here.
         model.metrics = metrics
-        model.status = "evaluated"
+        if model.status == "registered":
+            model.status = "evaluated"
         self.session.flush()
 
     def add_evaluation(
