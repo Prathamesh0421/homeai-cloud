@@ -77,7 +77,8 @@ export function UploadClipCard({ feed, onUploaded }: { feed: Feed; onUploaded: (
         </div>
         <div className="flex items-center justify-between gap-2">
           <span className="text-xs text-muted">
-            Sent as a <strong>{feed.media_kind}</strong> clip. The same client clip id twice returns the stored clip.
+            Sent as {feed.media_kind === "audio" ? "an" : "a"} <strong>{feed.media_kind}</strong> clip. The same client
+            clip id twice returns the stored clip.
           </span>
           <Button type="submit" disabled={upload.isPending}>
             {upload.isPending ? "Uploading…" : "Upload"}

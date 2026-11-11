@@ -247,6 +247,9 @@ export function getFeedStats(params: { tenantId?: string; houseId?: string } = {
 
 export interface ClipSummary {
   media_id: string;
+  house_id?: string;
+  /** Tells same-named feeds of different houses apart (every seeded house has a "Kitchen Mic"). */
+  house_name?: string | null;
   feed_id: string;
   feed_name: string | null;
   room_name: string | null;
