@@ -12,6 +12,7 @@ import IntegrityPage from "./IntegrityPage";
 import ActivityPage from "./ActivityPage";
 import {
   HOUSE,
+  TENANT,
   activity,
   classifyResult,
   deployment,
@@ -314,10 +315,29 @@ describe("ActivityPage", () => {
     return renderPage("/ops/activity", <ActivityPage />, "/ops/activity");
   }
 
+  // Houses + rooms selects replace the old UUID text inputs.
+  function houseList() {
+    return {
+      data: [{ house_id: HOUSE, tenant_id: TENANT, name: "Maple St", address: null, timezone: "America/Los_Angeles", owner_user_id: null, created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" }],
+      meta: { page: 1, page_size: 100, total: 1 },
+    };
+  }
+
+  async function pickHouse() {
+    // Radix Select: open the trigger, then click the option.
+    fireEvent.pointerDown(screen.getByRole("combobox", { name: "House" }), { button: 0 });
+    fireEvent.click(screen.getByRole("combobox", { name: "House" }));
+    const option = await screen.findByRole("option", { name: "Maple St" });
+    fireEvent.click(option);
+  }
+
   it("renders the 24-hour chart with a UTC axis after loading a house", async () => {
-    stubFetch({ "GET /api/v1/activity-patterns": { body: { data: [activity()] } } });
+    stubFetch({
+      "GET /api/v1/houses": { body: houseList() },
+      "GET /api/v1/activity-patterns": { body: { data: [activity()] } },
+    });
     renderActivity();
-    fireEvent.change(screen.getByPlaceholderText("house UUID"), { target: { value: HOUSE } });
+    await pickHouse();
     fireEvent.click(screen.getByRole("button", { name: "Load" }));
     expect(await screen.findByText("Detections per hour (UTC)")).toBeInTheDocument();
     expect(screen.getByText("00 UTC")).toBeInTheDocument();
@@ -327,12 +347,13 @@ describe("ActivityPage", () => {
 
   it("shows the collecting-data state when the baseline is not ready", async () => {
     stubFetch({
+      "GET /api/v1/houses": { body: houseList() },
       "GET /api/v1/activity-patterns": {
         body: { data: [activity({ band: "insufficient_data", baseline_mean: null, baseline_std: null, anomaly_score: null })] },
       },
     });
     renderActivity();
-    fireEvent.change(screen.getByPlaceholderText("house UUID"), { target: { value: HOUSE } });
+    await pickHouse();
     fireEvent.click(screen.getByRole("button", { name: "Load" }));
     expect(await screen.findByText("Collecting data")).toBeInTheDocument();
     expect(screen.getByText(/needs at least 14 active days/)).toBeInTheDocument();

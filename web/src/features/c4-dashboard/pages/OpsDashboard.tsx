@@ -13,6 +13,7 @@ import { ApiError } from "../../../api/http";
 import {
   ChartCard,
   ErrorState,
+  FilterSelect,
   KpiTile,
   SeverityBadge,
   SEVERITY_HEX,
@@ -22,8 +23,6 @@ import { Button } from "@/components/ui/button";
 import { SEED_HOUSES } from "../houseOptions";
 
 const POLL_MS = 15_000;
-const selectCls =
-  "rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm text-ink";
 
 const RANGE_PRESETS: { value: DashboardRange; label: string }[] = [
   { value: "24h", label: "24h" },
@@ -166,33 +165,25 @@ export default function OpsDashboard() {
             </button>
           ))}
         </div>
-        <select
-          className={selectCls}
+        <FilterSelect
+          label="Tenant"
           value={tenantId}
-          onChange={(e) => {
-            setTenantId(e.target.value);
+          onValueChange={(v) => {
+            setTenantId(v);
             setHouseId("");
           }}
-        >
-          <option value="">All tenants</option>
-          {(tenantsQ.data ?? []).map((t) => (
-            <option key={t.tenant_id} value={t.tenant_id}>
-              {t.name}
-            </option>
-          ))}
-        </select>
-        <select
-          className={selectCls}
+          options={(tenantsQ.data ?? []).map((t) => ({ value: t.tenant_id, label: t.name }))}
+          placeholder="All tenants"
+          className="w-[12rem]"
+        />
+        <FilterSelect
+          label="House"
           value={houseId}
-          onChange={(e) => setHouseId(e.target.value)}
-        >
-          <option value="">All houses</option>
-          {houses.map((h) => (
-            <option key={h.house_id} value={h.house_id}>
-              {h.name}
-            </option>
-          ))}
-        </select>
+          onValueChange={setHouseId}
+          options={houses.map((h) => ({ value: h.house_id, label: h.name }))}
+          placeholder="All houses"
+          className="w-[12rem]"
+        />
       </div>
 
       {unavailable.length > 0 && (
@@ -225,6 +216,18 @@ export default function OpsDashboard() {
         <KpiTile
           label="Feeds online"
           value={c1Down ? "Unavailable" : (data ? `${data.kpis.feeds_online}/${data.kpis.feeds_total}` : "—")}
+          tone={
+            c1Down
+              ? "default"
+              : data && data.kpis.feeds_online < data.kpis.feeds_total
+                ? "warning"
+                : "default"
+          }
+          hint={
+            !c1Down && data && data.kpis.feeds_online < data.kpis.feeds_total
+              ? `${data.kpis.feeds_total - data.kpis.feeds_online} feed${data.kpis.feeds_total - data.kpis.feeds_online === 1 ? "" : "s"} offline`
+              : undefined
+          }
         />
         <KpiTile label="Alerts" value={data?.kpis.alerts ?? "—"} />
         <KpiTile label="Clips classified" value={data?.kpis.clips_classified ?? "—"} />
@@ -237,7 +240,7 @@ export default function OpsDashboard() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ChartCard title="Alerts by severity">
-          {sev ? (
+          {sev && (sev.critical + sev.high + sev.medium + sev.low) > 0 ? (
             <div className="space-y-2">
               <BarRow label="critical" value={sev.critical} max={sevMax} />
               <BarRow label="high" value={sev.high} max={sevMax} />
@@ -245,7 +248,7 @@ export default function OpsDashboard() {
               <BarRow label="low" value={sev.low} max={sevMax} />
             </div>
           ) : (
-            <p className="text-sm text-muted">No data</p>
+            <p className="text-sm text-muted">No alerts in the last {range === "24h" ? "24h" : range}.</p>
           )}
         </ChartCard>
         <ChartCard title="Alerts by day">

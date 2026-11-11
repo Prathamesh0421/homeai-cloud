@@ -1,9 +1,14 @@
-/** Database Records (/ops/records): browse entities across stores, scoped per role. */
+/** Database Records (/ops/records): browse entities across stores, scoped per role.
+ *
+ * Tenant and house are chosen from name selects (C4 tenants + C1 houses) instead
+ * of pasting UUIDs. Column headers are humanized; UUID cells are truncated with a
+ * copy button.
+ */
 
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { Check, Copy, X } from "lucide-react";
 import {
   RECORD_ENTITIES,
   type Record_,
@@ -12,9 +17,11 @@ import {
   c3Keys,
   listRecords,
 } from "../../api/c3";
+import { fetchTenants } from "../../api/c4";
+import { listHouses, c1Keys } from "../../api/c1";
 import { ApiError } from "../../api/http";
 import { useAuth } from "../../auth/AuthProvider";
-import { DataTable, EmptyState, ErrorState, Pagination, type Column } from "../../shared";
+import { DataTable, EmptyState, ErrorState, FilterSelect, Pagination, type Column } from "../../shared";
 
 const PAGE_SIZE = 25;
 
@@ -28,6 +35,32 @@ const PREVIEW_COLUMNS: Record<RecordEntity, string[]> = {
   alerts: ["alert_id", "severity", "status", "triggered_at"],
   activity_patterns: ["id", "house_id", "room_id", "date"],
 };
+
+// Humanized column titles (snake_case → sentence case, with friendlier names).
+const HEADER_LABELS: Record<string, string> = {
+  house_id: "House",
+  room_id: "Room",
+  feed_id: "Feed",
+  alert_id: "Alert",
+  tenant_id: "Tenant",
+  id: "ID",
+  name: "Name",
+  room_type: "Room type",
+  status: "Status",
+  severity: "Severity",
+  top_label: "Top label",
+  top_confidence: "Confidence",
+  detected_at: "Detected",
+  uploaded_at: "Uploaded",
+  triggered_at: "Triggered",
+  date: "Date",
+};
+
+function humanize(key: string): string {
+  return HEADER_LABELS[key] ?? key.replace(/_/g, " ");
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function filtersFrom(params: URLSearchParams): RecordFilters {
   return {
@@ -48,6 +81,30 @@ export default function RecordsPage() {
   const filters = useMemo(() => filtersFrom(params), [params]);
   const [drawerRow, setDrawerRow] = useState<Record_ | null>(null);
 
+  const isCloud = session?.role === "cloud_staff";
+  const tenantId = params.get("tenant") ?? "";
+  const houseId = params.get("house") ?? "";
+
+  // Tenant + house name selects (cloud staff only see the tenant select).
+  const tenantsQ = useQuery({
+    queryKey: ["c4", "tenants"],
+    queryFn: fetchTenants,
+    enabled: isCloud,
+  });
+  const tenantOptions = useMemo(
+    () => (tenantsQ.data ?? []).map((t) => ({ value: t.tenant_id, label: t.name })),
+    [tenantsQ.data],
+  );
+
+  const housesQ = useQuery({
+    queryKey: c1Keys.houses({ tenantId: tenantId || undefined, pageSize: 100 }),
+    queryFn: () => listHouses({ tenantId: tenantId || undefined, pageSize: 100 }),
+  });
+  const houseOptions = useMemo(
+    () => (housesQ.data?.data ?? []).map((h) => ({ value: h.house_id, label: h.name })),
+    [housesQ.data],
+  );
+
   const q = useQuery({
     queryKey: c3Keys.records(entity, filters),
     queryFn: () => listRecords(entity, filters),
@@ -59,20 +116,21 @@ export default function RecordsPage() {
     if (value) next.set(name, value);
     else next.delete(name);
     if (name !== "page") next.delete("page");
+    // Reset house when tenant changes (house list is tenant-scoped).
+    if (name === "tenant") next.delete("house");
     setParams(next, { replace: true });
   }
 
   const cols = PREVIEW_COLUMNS[entity];
   const columns: Column<Record_>[] = cols.map((key) => ({
     key,
-    header: key,
-    render: (row) => <span className="text-ink">{formatCell(row[key])}</span>,
+    header: humanize(key),
+    render: (row) => <Cell value={row[key]} />,
   }));
 
-  const scopeNote =
-    session?.role === "cloud_staff"
-      ? "Cloud staff: all tenants (narrow with a tenant filter)."
-      : "You see only records for your own houses.";
+  const scopeNote = isCloud
+    ? "Cloud staff: all tenants (narrow with a tenant filter)."
+    : "You see only records for your own houses.";
 
   return (
     <div className="space-y-4">
@@ -96,12 +154,26 @@ export default function RecordsPage() {
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        {session?.role === "cloud_staff" && (
-          <FilterInput label="Tenant" value={params.get("tenant") ?? ""} onChange={(v) => setParam("tenant", v)} placeholder="tenant UUID" />
+        {isCloud && (
+          <FilterSelect
+            label="Tenant"
+            value={tenantId}
+            onValueChange={(v) => setParam("tenant", v)}
+            options={tenantOptions}
+            placeholder="All tenants"
+            className="w-[12rem]"
+          />
         )}
-        <FilterInput label="House" value={params.get("house") ?? ""} onChange={(v) => setParam("house", v)} placeholder="house UUID" />
+        <FilterSelect
+          label="House"
+          value={houseId}
+          onValueChange={(v) => setParam("house", v)}
+          options={houseOptions}
+          placeholder="All houses"
+          className="w-[12rem]"
+        />
         <FilterInput label="Filter" value={params.get("filter") ?? ""} onChange={(v) => setParam("filter", v)} placeholder="field:value" />
-        {(params.get("tenant") || params.get("house") || params.get("filter")) && (
+        {(tenantId || houseId || params.get("filter")) && (
           <button
             type="button"
             onClick={() => setParams(new URLSearchParams(entity === "detections" ? {} : { entity }), { replace: true })}
@@ -138,6 +210,46 @@ export default function RecordsPage() {
 
       {drawerRow && <RecordDrawer row={drawerRow} onClose={() => setDrawerRow(null)} />}
     </div>
+  );
+}
+
+function Cell({ value }: { value: unknown }) {
+  const [copied, setCopied] = useState(false);
+  const text = formatCell(value);
+  const isUuid = typeof value === "string" && UUID_RE.test(value);
+
+  if (!isUuid) {
+    return <span className="text-ink">{text}</span>;
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(String(value));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1200);
+    } catch {
+      // clipboard unavailable (e.g. insecure context) — ignore
+    }
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 text-ink">
+      <span className="tnum font-mono text-xs" title={text}>
+        {text.slice(0, 8)}…
+      </span>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          void copy();
+        }}
+        className="text-muted hover:text-ink"
+        aria-label="Copy ID"
+        tabIndex={-1}
+      >
+        {copied ? <Check className="h-3 w-3 text-success" /> : <Copy className="h-3 w-3" />}
+      </button>
+    </span>
   );
 }
 

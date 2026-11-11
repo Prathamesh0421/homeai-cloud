@@ -1,9 +1,14 @@
-/** Alerts list (/alerts): filters, newest first, polls every 15 s (the in-app channel). */
+/** Alerts list (/alerts): filters, newest first, polls every 15 s (the in-app channel).
+ *
+ * Polling pauses when the tab is hidden. The header shows a pulsing "Live" dot
+ * with "updated Xs ago" instead of a static "Updates every 15 s" string. Rows
+ * that arrive in a poll are briefly highlighted.
+ */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, X, Bell } from "lucide-react";
 import {
   ALERT_STATUSES,
   SEVERITIES,
@@ -86,7 +91,7 @@ export default function AlertsPage() {
   const alerts = useQuery({
     queryKey: c2Keys.alerts(filters),
     queryFn: () => listAlerts(filters),
-    refetchInterval: POLL_MS,
+    refetchInterval: () => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
     placeholderData: keepPreviousData,
   });
   const types = useQuery({ queryKey: c2Keys.alertTypes(), queryFn: listAlertTypes, staleTime: 3_600_000 });
@@ -95,6 +100,41 @@ export default function AlertsPage() {
     JSON.stringify(filters),
     alerts.isPlaceholderData,
   );
+
+  // "Live · updated Xs ago" indicator.
+  const [updatedAgo, setUpdatedAgo] = useState<number | null>(null);
+  const lastFetchedAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (alerts.isFetching) {
+      lastFetchedAt.current = Date.now();
+      setUpdatedAgo(0);
+    }
+  }, [alerts.isFetching]);
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (lastFetchedAt.current !== null) setUpdatedAgo(Math.round((Date.now() - lastFetchedAt.current) / 1000));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // Briefly highlight rows that arrived in the latest poll (any severity).
+  const [freshIds, setFreshIds] = useState<Set<string>>(new Set());
+  const prevIds = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const rows = alerts.data?.data;
+    if (!rows || alerts.isPlaceholderData) return;
+    const ids = new Set(rows.map((r) => r.alert_id));
+    if (prevIds.current && prevIds.current.size > 0) {
+      const arrived = [...ids].filter((id) => !prevIds.current!.has(id));
+      if (arrived.length) {
+        setFreshIds(new Set(arrived));
+        const t = window.setTimeout(() => setFreshIds(new Set()), 2000);
+        prevIds.current = ids;
+        return () => window.clearTimeout(t);
+      }
+    }
+    prevIds.current = ids;
+  }, [alerts.data, alerts.isPlaceholderData]);
 
   // House filter: the owner's houses, plus any house seen in results (names come from C1;
   // until a house shows up in results it is labelled by the end of its id, which differs).
@@ -203,8 +243,16 @@ export default function AlertsPage() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Alerts</h1>
-        <span className="text-xs text-muted" aria-live="polite">
-          {alerts.isFetching ? "Refreshing…" : "Updates every 15 s"}
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted" aria-live="polite">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60" aria-hidden="true" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-success" aria-hidden="true" />
+          </span>
+          {alerts.isFetching
+            ? "Refreshing…"
+            : updatedAgo === null
+              ? "Live"
+              : `Live · updated ${updatedAgo}s ago`}
         </span>
       </div>
 
@@ -308,6 +356,7 @@ export default function AlertsPage() {
               ? "New alerts appear here within 15 seconds. Monitoring all houses across tenants."
               : `New alerts appear here within 15 seconds. Monitoring ${session?.houseIds.length ?? 0} house${(session?.houseIds.length ?? 0) === 1 ? "" : "s"}.`
           }
+          icon={<Bell className="h-8 w-8" />}
         />
       ) : (
         <>
@@ -316,6 +365,7 @@ export default function AlertsPage() {
             rows={alerts.data.data}
             rowKey={(a) => a.alert_id}
             onRowClick={(a) => setDrawerId(a.alert_id)}
+            rowClassName={(a) => (freshIds.has(a.alert_id) ? "bg-accent-soft/60" : undefined)}
           />
           <Pagination
             page={alerts.data.meta.page}

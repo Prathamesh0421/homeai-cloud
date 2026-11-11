@@ -61,7 +61,7 @@ export default {
         pop: "var(--shadow-pop)",
       },
       fontFamily: {
-        sans: ['"Instrument Sans"', '"DM Sans"', "system-ui", "sans-serif"],
+        sans: ['"Geist Sans"', '"Instrument Sans"', '"DM Sans"', "system-ui", "sans-serif"],
       },
     },
   },

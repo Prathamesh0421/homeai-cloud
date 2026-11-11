@@ -16,9 +16,11 @@ export interface DataTableProps<T> {
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
   empty?: ReactNode;
+  /** Optional per-row class (e.g. to briefly highlight freshly arrived rows). */
+  rowClassName?: (row: T) => string | undefined;
 }
 
-export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, rowClassName }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
@@ -74,7 +76,7 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty }: DataT
           {sorted.map((row) => (
             <tr
               key={rowKey(row)}
-              className={`border-b border-border/60 last:border-0 ${onRowClick ? "cursor-pointer hover:bg-surface-2" : ""}`}
+              className={`border-b border-border/60 last:border-0 ${onRowClick ? "cursor-pointer hover:bg-surface-2" : ""} ${rowClassName?.(row) ?? ""}`}
               onClick={() => onRowClick?.(row)}
             >
               {columns.map((col) => (

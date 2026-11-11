@@ -4,19 +4,47 @@
  * day, so the axis is labelled UTC (no local-time conversion). Before the baseline job has run
  * the API returns null baselines and band ``insufficient_data`` — the page shows a "collecting
  * data" state, never a crash or a zero band.
+ *
+ * House and room are chosen from name selects (C1 list APIs) instead of pasting UUIDs.
  */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { type ActivityPattern, c3Keys, listActivity } from "../../api/c3";
+import { listHouses, listRooms, c1Keys } from "../../api/c1";
 import { ApiError } from "../../api/http";
-import { EmptyState, ErrorState } from "../../shared";
+import { EmptyState, ErrorState, FilterSelect } from "../../shared";
 import { BAND_LABEL, BAND_TONE, relativeTime, utcHourLabel } from "./format";
+
+// Radix Select forbids value=""; use a sentinel for "all rooms".
+const ALL_ROOMS = "__all__";
 
 export default function ActivityPage() {
   const [houseId, setHouseId] = useState("");
-  const [roomId, setRoomId] = useState("");
+  const [roomId, setRoomId] = useState(ALL_ROOMS);
   const [submitted, setSubmitted] = useState<{ houseId: string; roomId?: string } | null>(null);
+
+  const housesQ = useQuery({
+    queryKey: c1Keys.houses({ pageSize: 100 }),
+    queryFn: () => listHouses({ pageSize: 100 }),
+  });
+  const houseOptions = useMemo(
+    () => (housesQ.data?.data ?? []).map((h) => ({ value: h.house_id, label: h.name })),
+    [housesQ.data],
+  );
+
+  const roomsQ = useQuery({
+    queryKey: c1Keys.rooms(houseId),
+    queryFn: () => listRooms(houseId),
+    enabled: Boolean(houseId),
+  });
+  const roomOptions = useMemo(
+    () => [
+      { value: ALL_ROOMS, label: "All rooms" },
+      ...(roomsQ.data ?? []).map((r) => ({ value: r.room_id, label: r.name })),
+    ],
+    [roomsQ.data],
+  );
 
   const q = useQuery({
     queryKey: c3Keys.activity({ houseId: submitted?.houseId, roomId: submitted?.roomId }),
@@ -34,38 +62,58 @@ export default function ActivityPage() {
         className="flex flex-wrap items-end gap-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (houseId.trim()) setSubmitted({ houseId: houseId.trim(), roomId: roomId.trim() || undefined });
+          if (houseId) {
+            setSubmitted({
+              houseId,
+              roomId: roomId && roomId !== ALL_ROOMS ? roomId : undefined,
+            });
+          }
         }}
       >
-        <label className="text-sm">
-          <span className="text-muted">House ID</span>
-          <input
-            className="mt-1 block w-72 rounded-md border border-border-strong bg-surface px-3 py-2 text-ink"
-            placeholder="house UUID"
-            value={houseId}
-            onChange={(e) => setHouseId(e.target.value)}
-          />
-        </label>
-        <label className="text-sm">
-          <span className="text-muted">Room ID (optional)</span>
-          <input
-            className="mt-1 block w-72 rounded-md border border-border-strong bg-surface px-3 py-2 text-ink"
-            placeholder="room UUID"
-            value={roomId}
-            onChange={(e) => setRoomId(e.target.value)}
-          />
-        </label>
+        <div className="text-sm">
+          <span className="text-muted">House</span>
+          <div className="mt-1.5">
+            {housesQ.isError ? (
+              <p className="text-xs text-danger">Could not load houses.</p>
+            ) : (
+              <FilterSelect
+                label="House"
+                value={houseId}
+                onValueChange={(v) => {
+                  setHouseId(v);
+                  setRoomId(ALL_ROOMS);
+                }}
+                options={houseOptions}
+                placeholder={housesQ.isPending ? "Loading houses…" : "Select a house"}
+                className="w-[14rem]"
+              />
+            )}
+          </div>
+        </div>
+        <div className="text-sm">
+          <span className="text-muted">Room</span>
+          <div className="mt-1.5">
+            <FilterSelect
+              label="Room"
+              value={roomId || ALL_ROOMS}
+              onValueChange={setRoomId}
+              options={roomOptions}
+              placeholder="All rooms"
+              className="w-[14rem]"
+            />
+          </div>
+        </div>
         <button
           type="submit"
           className="rounded-md bg-primary px-3.5 py-2 text-sm font-medium text-white hover:bg-primary-hover disabled:opacity-50"
-          disabled={!houseId.trim()}
+          disabled={!houseId}
         >
           Load
         </button>
       </form>
 
       {!submitted ? (
-        <EmptyState title="Pick a house" description="Enter a house (and optionally a room) to see its activity pattern." />
+        <EmptyState title="Pick a house" description="Choose a house (and optionally a room) to see its activity pattern." />
       ) : q.isPending ? (
         <div className="py-8 text-center text-sm text-muted">Loading activity…</div>
       ) : q.isError ? (
