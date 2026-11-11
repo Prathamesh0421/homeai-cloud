@@ -89,7 +89,7 @@ def build_summary(
 
     cs_tenant = scoped_tenant if principal.role == "cloud_staff" else None
 
-    with ThreadPoolExecutor(max_workers=5) as pool:
+    with ThreadPoolExecutor(max_workers=6) as pool:
         f_feeds = pool.submit(
             _safe,
             "c1",
@@ -140,6 +140,17 @@ def build_summary(
             ),
             [],
         )
+        f_open = pool.submit(
+            _safe,
+            "c2",
+            lambda: c2_client.fetch_open_alert_count(
+                settings.c2_base_url,
+                bearer_token=bearer_token,
+                house_id=scoped_house,
+                tenant_id=cs_tenant,
+            ),
+            0,
+        )
         f_det = pool.submit(
             _safe,
             "c3",
@@ -159,9 +170,10 @@ def build_summary(
         severity_buckets, err_sev = f_sev.result()
         day_buckets, err_day = f_day.result()
         recent, err_recent = f_recent.result()
+        open_count, err_open = f_open.result()
         det, err_c3 = f_det.result()
 
-    unavailable = [e for e in (err_c1, err_sev, err_day, err_recent, err_c3) if e]
+    unavailable = [e for e in (err_c1, err_sev, err_day, err_recent, err_open, err_c3) if e]
     # Deduplicate while preserving order.
     seen: set[str] = set()
     uniq_unavailable: list[str] = []
@@ -183,10 +195,16 @@ def build_summary(
     feeds_online = int((feeds or {}).get("online") or 0)
     houses = int((feeds or {}).get("houses") or (1 if scoped_house else 0))
 
-    open_alerts = sum(
-        1
-        for a in (recent or [])
-        if str(a.get("status", "")).lower() in {"open", "acknowledged", "new", "active"}
+    # Prefer the dedicated open-count call (all matching alerts). Fall back to
+    # counting the recent page only if that call failed.
+    open_alerts = (
+        int(open_count or 0)
+        if err_open is None
+        else sum(
+            1
+            for a in (recent or [])
+            if str(a.get("status", "")).lower() in {"open", "acknowledged", "new", "active"}
+        )
     )
 
     detections_top = [
