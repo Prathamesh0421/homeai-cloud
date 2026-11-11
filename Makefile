@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate seed token test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim demo-c1-reset deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run test-c2-full test-c1-full
+.PHONY: help lint lint-py lint-web test test-common web migrate seed token test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim demo-c1-reset deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run backup-run test-c2-full test-c1-full
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -212,3 +212,12 @@ baseline-run:
 integrity-run:
 	$(COMPOSE_PROD) run --rm --no-deps -T -v $(CURDIR):/workspace:ro -e PYTHONPATH=/app \
 		c3-data python /workspace/scripts/demo/c3_integrity.py $(ARGS)
+
+# Run a C3 backup to S3 on demand (C3-14). Nightly the scheduler runs this at C3_BACKUP_JOB_HOUR;
+# this trigger lets demo prep take a backup now. Dumps Postgres schema c3 + the C3-owned Mongo
+# collections (incl. activity_patterns) + C3's media_events fields to backups/<date>/.
+#   make backup-run
+#   make backup-run ARGS="--as-of 2026-07-01"
+backup-run:
+	$(COMPOSE_PROD) run --rm --no-deps -T -v $(CURDIR):/workspace:ro -e PYTHONPATH=/app \
+		c3-data python /workspace/scripts/demo/c3_backup.py $(ARGS)
