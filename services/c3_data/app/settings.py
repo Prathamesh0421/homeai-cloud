@@ -46,6 +46,9 @@ class Settings(BaseServiceSettings):
     scheduler_enabled: bool = True
     baseline_job_hour: int = 2  # 02:00 UTC
     integrity_job_hour: int = 3  # 03:00 UTC
+    # Backup runs after the other two so the one scheduler thread does not overlap heavy jobs
+    # (C3-14). 04:00 UTC by default; set C3_BACKUP_JOB_HOUR to change.
+    backup_job_hour: int = 4
 
 
 @lru_cache

@@ -1,14 +1,14 @@
 """The one C3 background scheduler (C3-12, Rev4 §5).
 
-A single APScheduler ``BackgroundScheduler`` in the worker process drives both nightly jobs:
-the activity baseline (``run_baseline_job``, deferred here from 8b) and the integrity check
-across all tenants. Keeping both on one scheduler is deliberate — there is exactly one
-scheduler story in C3, and it lives here.
+A single APScheduler ``BackgroundScheduler`` in the worker process drives all three nightly
+jobs: the activity baseline (``run_baseline_job``, deferred here from 8b), the integrity check
+across all tenants, and the backup to S3 (C3-14). Keeping them on one scheduler is deliberate —
+there is exactly one scheduler story in C3, and it lives here.
 
-Both jobs are idempotent (baseline ``$set``s computed values; the integrity check is
-read-only and records a report row), so a missed-then-caught-up fire is harmless. When scaling
-to several workers set ``C3_SCHEDULER_ENABLED=false`` on the extra workers so the jobs fire on
-exactly one instance.
+The jobs are idempotent (baseline ``$set``s computed values; integrity is read-only + records a
+report row; backup writes date-keyed S3 objects), so a missed-then-caught-up fire is harmless.
+When scaling to several workers set ``C3_SCHEDULER_ENABLED=false`` on the extra workers so the
+jobs fire on exactly one instance.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from homeai_common import db, mongo
 
+from app.jobs.backup import run_backup_job
 from app.repositories.integrity_repo import CheckAlreadyRunning, IntegrityRepo
 from app.services import integrity_service
 from app.services.activity_service import run_baseline_job
@@ -77,6 +78,19 @@ def build_scheduler(settings: Settings, mongo_db) -> BackgroundScheduler:
         max_instances=1,
         coalesce=True,
     )
+    # Nightly backup to S3 (C3-14). Takes settings (s3 bucket, db + mongo URIs); it shells out to
+    # pg_dump/mongodump with the URI directly. Only registered when S3 looks configured.
+    scheduler.add_job(
+        run_backup_job,
+        trigger="cron",
+        hour=settings.backup_job_hour,
+        minute=0,
+        args=[settings],
+        id="backup",
+        replace_existing=True,
+        max_instances=1,
+        coalesce=True,
+    )
     return scheduler
 
 
@@ -100,6 +114,7 @@ def start_scheduler(settings: Settings) -> BackgroundScheduler | None:
         extra={
             "baseline_hour": settings.baseline_job_hour,
             "integrity_hour": settings.integrity_job_hour,
+            "backup_hour": settings.backup_job_hour,
         },
     )
     return scheduler
