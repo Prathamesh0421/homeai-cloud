@@ -106,6 +106,7 @@ class ClipLibraryService:
         return {
             "media_id": doc["_id"],
             "house_id": doc["house_id"],
+            "house_name": row.house_name if row else None,
             "feed_id": doc["feed_id"],
             "feed_name": row.feed.name if row else None,
             "room_id": doc.get("room_id"),

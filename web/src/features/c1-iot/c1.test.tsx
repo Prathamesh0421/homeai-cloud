@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { ApiError } from "../../api/http";
 import { feedsQuery, uploadClip } from "../../api/c1";
+import ClipLibraryPage from "./clips/ClipLibraryPage";
 import FeedDetailPage from "./feed-detail/FeedDetailPage";
 import FeedManagerPage from "./feed-manager/FeedManagerPage";
 import HousesPage from "./houses/HousesPage";
@@ -115,6 +116,8 @@ describe("Feed Detail", () => {
     expect(enable).toBeDisabled();
     expect(enable.parentElement).toHaveAttribute("title", "Assign a room before enabling this feed.");
     expect(screen.getByText("Assign a room before enabling this feed.")).toBeInTheDocument();
+    const hint = screen.getByText(/The same client/).closest("span");
+    expect(hint?.textContent).toMatch(/^Sent as an audio clip\./);
   });
 
   it("enables a feed that has a room and shows a 409 as a toast", async () => {
@@ -134,6 +137,50 @@ describe("Feed Detail", () => {
     await screen.findByText(/Assign a room to this feed before enabling it\. \(409 room_required\)/);
     const patch = calls.find((c) => c.method === "PATCH");
     expect(patch?.body).toEqual({ is_enabled: true });
+  });
+});
+
+describe("Clip Library", () => {
+  it("tells same-named feeds of different houses apart", async () => {
+    const OAK = "22222222-0000-0000-0000-0000000000a2";
+    const OAK_FEED = "55555555-0000-4000-8000-000000000002";
+    const clip = (media_id: string, house_name: string, feed_id: string) => ({
+      media_id,
+      house_name,
+      feed_id,
+      feed_name: "Kitchen Mic",
+      room_name: "Kitchen",
+      media_kind: "audio",
+      captured_at: "2026-11-10T21:31:00Z",
+      uploaded_at: "2026-11-10T21:31:02Z",
+      size: 192_100,
+      status: "analyzed",
+      detection_id: null,
+      top_label: "glass_break",
+    });
+    stubFetch({
+      "GET /api/v1/houses": { body: page([house(), house({ house_id: OAK, name: "Oak Ave" })]) },
+      "GET /api/v1/feeds": {
+        body: page([
+          feed({ name: "Kitchen Mic" }),
+          feed({ feed_id: OAK_FEED, house_id: OAK, house_name: "Oak Ave", name: "Kitchen Mic" }),
+        ]),
+      },
+      "GET /api/v1/clips": {
+        body: page([
+          clip("aaaaaaaa-0000-4000-8000-000000000001", "Maple St", FEED),
+          clip("aaaaaaaa-0000-4000-8000-000000000002", "Oak Ave", OAK_FEED),
+        ]),
+      },
+    });
+    renderPage("/iot/clips", <ClipLibraryPage />, "/iot/clips");
+
+    const table = await screen.findByRole("table");
+    await within(table).findByText("Oak Ave");
+    expect(within(table).getByRole("columnheader", { name: /House/ })).toBeInTheDocument();
+    expect(within(table).getByText("Maple St")).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "Kitchen Mic · Oak Ave" })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "Kitchen Mic · Maple St" })).toBeInTheDocument();
   });
 });
 

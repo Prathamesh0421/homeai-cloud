@@ -64,6 +64,7 @@ export default function ClipLibraryPage() {
       render: (c) => <time dateTime={c.captured_at}>{formatWhen(c.captured_at)}</time>,
       sortValue: (c) => c.captured_at,
     },
+    { key: "house", header: "House", render: (c) => c.house_name ?? "—", sortValue: (c) => c.house_name ?? "" },
     { key: "feed", header: "Feed", render: (c) => c.feed_name ?? "—", sortValue: (c) => c.feed_name ?? "" },
     { key: "room", header: "Room", render: (c) => c.room_name ?? "—", sortValue: (c) => c.room_name ?? "" },
     { key: "kind", header: "Kind", render: (c) => <KindLabel kind={c.media_kind} /> },
@@ -101,6 +102,7 @@ export default function ClipLibraryPage() {
             {feeds.data?.data.map((f) => (
               <option key={f.feed_id} value={f.feed_id}>
                 {f.name}
+                {!filters.houseId && f.house_name ? ` · ${f.house_name}` : ""}
                 {f.archived_at ? " (archived)" : ""}
               </option>
             ))}
