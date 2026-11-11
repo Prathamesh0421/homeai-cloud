@@ -7,13 +7,16 @@ per-entity whitelist. Secrets are never exposed (C4 tables are not browsable her
 # C1 dependency: houses, rooms, camera_feeds
 # ------------------------------------------
 # - These tables live in schema c1, owned by Ekant (C1 IoT Device Manager).
-# - C1 migrations have not shipped yet, so these tables do not exist.
-# - Until they do, queries against c1.* return empty results, not errors.
-# - When C1 migrations land on main:
-#   1. Remove the table-absent guard in _safe_c1_query() (keep the 42501 re-raise).
-#   2. The c3_reader role already has SELECT on c1.* (see init.sql); confirm it took on RDS.
-#   3. Replace SELECT * on the c1 entities with an explicit column list + casts.
-#   4. No C3 migration or schema change is needed.
+# - C1 has shipped (migration 0001), so c1.houses/rooms/camera_feeds exist on main and c3_reader
+#   has SELECT on c1.* (C1's migration + init.sql).
+# - c1 reads now use explicit column lists (_select_columns / _C1_COLUMNS), not SELECT *, so a
+#   C1 column add cannot leak in and a rename/drop fails the schema-contract test loudly
+#   (audit 4.8). Sensitive/internal columns (camera_feeds.config, soft-delete/archive markers)
+#   are deliberately not browsable.
+# - The _safe_c1_query table-absent (42P01) guard is kept as defence in depth: per-package CI
+#   still runs with only schema c3 migrated, so c1.* can be absent there; the 42501 missing-grant
+#   path is always re-raised. On a full stack (compose/RDS) the tables exist and reads return
+#   real rows.
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from datetime import datetime
-from typing import Any
+from typing import Any, ClassVar
 
 from homeai_common.errors import ApiError
 from pymongo.database import Database
@@ -213,9 +216,10 @@ class RecordQuery:
                 return [], 0
             total = count_rows[0]["n"]
             params2 = {**params, "lim": limit, "off": offset}
+            cols = self._select_columns(entity)
             rows = _safe_c1_query(
                 self.conn,
-                f"SELECT * FROM {table} {where} ORDER BY {tf} DESC LIMIT :lim OFFSET :off",
+                f"SELECT {cols} FROM {table} {where} ORDER BY {tf} DESC LIMIT :lim OFFSET :off",
                 params2,
             )
             return rows, total
@@ -317,14 +321,32 @@ class RecordQuery:
             "alerts": "c2.alerts",
         }[entity]
 
+    # Explicit column lists per SQL entity (audit 4.8; never SELECT * on another component's
+    # table). An explicit list means a C1/C2 column add does not leak in unannounced, and a
+    # rename or drop of a column we read fails the schema-contract test loudly instead of
+    # silently. Sensitive/internal columns are omitted: c1.camera_feeds.config (device/network
+    # config JSONB), the c1 soft-delete/archive markers (already applied as filters), and C2
+    # internals. These lists are pinned by tests/integration/test_schema_contract.py.
+    _C1_COLUMNS: ClassVar[dict[str, str]] = {
+        "houses": (
+            "house_id, tenant_id, name, address, timezone, owner_user_id, created_at, updated_at"
+        ),
+        "rooms": "room_id, house_id, name, room_type, created_at",
+        "feeds": (
+            "feed_id, tenant_id, house_id, room_id, name, media_kind, status, is_enabled, "
+            "connectivity_status, config_version, last_clip_at, consecutive_failures, "
+            "created_at, updated_at"
+        ),
+    }
+
     @staticmethod
     def _select_columns(entity: str) -> str:
-        """Columns to select per SQL entity.
+        """Columns to select per SQL entity — explicit lists, never SELECT *.
 
-        alerts: an explicit list (not SELECT *) so a C2 column add/rename does not leak in
-        unannounced, and the two Numeric columns are cast to float8 so the API returns numbers,
-        not Decimal-as-string (review item 4). rule_id and updated_at are C2 internals, omitted.
-        c1 entities keep SELECT * until C1 ships its schema (audit 4.8, C1-integration item).
+        alerts: the two Numeric columns are cast to float8 so the API returns numbers, not
+        Decimal-as-string (review item 4); rule_id/updated_at are C2 internals, omitted.
+        c1 entities use explicit lists now that C1 has shipped (audit 4.8): config (device
+        config JSONB) and the soft-delete/archive markers are deliberately not browsable.
         """
         if entity == "alerts":
             return (
@@ -333,6 +355,8 @@ class RecordQuery:
                 "threshold::float8 AS threshold, severity, status, "
                 "triggered_at, acknowledged_at, resolved_at"
             )
+        if entity in RecordQuery._C1_COLUMNS:
+            return RecordQuery._C1_COLUMNS[entity]
         return "*"
 
     @staticmethod

@@ -5,6 +5,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { SortableList, type SortableItem } from "./SortableList";
 import { SeverityBadge } from "./SeverityBadge";
 import { fieldErrors, FormPanel } from "./FormPanel";
+import { ToastProvider, ToastViewport, useToasts } from "./Toasts";
 
 describe("SeverityBadge", () => {
   it("renders the icon and the word for each severity", () => {
@@ -80,5 +81,29 @@ describe("FormPanel fieldErrors", () => {
     );
     // FormPanel renders the title
     expect(screen.getByText("Test")).toBeInTheDocument();
+  });
+});
+
+describe("ToastViewport", () => {
+  function PushButton() {
+    const { push } = useToasts();
+    return (
+      <button type="button" onClick={() => push({ tone: "warning", message: "Rule already exists" })}>
+        push
+      </button>
+    );
+  }
+
+  it("stacks above side panels and dialogs (z-50), so a toast raised under a panel is seen", () => {
+    render(
+      <ToastProvider>
+        <PushButton />
+        <ToastViewport />
+      </ToastProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "push" }));
+    const viewport = screen.getByRole("status").parentElement!;
+    const z = Number(/\bz-\[(\d+)\]/.exec(viewport.className)?.[1] ?? /\bz-(\d+)\b/.exec(viewport.className)?.[1]);
+    expect(z).toBeGreaterThan(50);
   });
 });

@@ -15,6 +15,7 @@ import {
   Timeline,
   useToasts,
 } from "../../shared";
+import { AlertClip } from "./AlertClip";
 import { FalsePositiveDialog } from "./FalsePositiveDialog";
 import { deliveryStatus, formatWhen, labelText, percent, timelineLabel, type DeliveryTone } from "./format";
 
@@ -119,9 +120,8 @@ export default function AlertDetailPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Section title="Evidence">
-          {/* STANDIN(C1-07): clip playback comes from C1 GET /clips/{media_id}/playback-url (C2-11). */}
-          <div className="mb-4 rounded-md border border-dashed border-border-strong bg-canvas p-4 text-center text-sm text-muted">
-            Clip playback is not available yet.
+          <div className="mb-4">
+            <AlertClip mediaId={a.evidence.media_id} />
           </div>
           <p className="mb-2 text-sm text-ink">
             Matched <strong>{labelText(a.top_label)}</strong> at {percent(a.top_confidence)}

@@ -79,7 +79,15 @@ describe("AlertViewPage", () => {
   it("plays the clip when there is one", async () => {
     stubFetch({ [`GET ${URL_PATH}`]: { body: { data: view({ clip_url: "https://s3.example/clip.wav?sig=1" }) } } });
     renderView();
-    expect(await screen.findByLabelText("Alert recording")).toHaveAttribute("src", "https://s3.example/clip.wav?sig=1");
+    const player = await screen.findByLabelText("Alert recording");
+    expect(player).toHaveAttribute("src", "https://s3.example/clip.wav?sig=1");
+    expect(player.tagName).toBe("AUDIO"); // a .wav plays in <audio> (iPhone Safari)
+  });
+
+  it("plays a video clip in a video player", async () => {
+    stubFetch({ [`GET ${URL_PATH}`]: { body: { data: view({ clip_url: "https://s3.example/clip.mp4?sig=1" }) } } });
+    renderView();
+    expect((await screen.findByLabelText("Alert recording")).tagName).toBe("VIDEO");
   });
 
   it("says when the status changed", async () => {

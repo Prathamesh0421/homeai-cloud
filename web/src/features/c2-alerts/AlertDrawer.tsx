@@ -20,6 +20,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
+import { AlertClip } from "./AlertClip";
 import { FalsePositiveDialog } from "./FalsePositiveDialog";
 import { formatWhen, labelText, percent, timelineLabel } from "./format";
 
@@ -99,14 +100,11 @@ export function AlertDrawer({ alertId, onOpenChange }: AlertDrawerProps) {
             </SheetHeader>
 
             <div className="space-y-5 px-5 pb-6">
-              {/* STANDIN(C1-07): clip playback comes from C1 GET /clips/{media_id}/playback-url (C2-11). */}
               <section>
                 <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">
                   Recording
                 </h3>
-                <div className="rounded-md border border-dashed border-border-strong bg-canvas p-4 text-center text-sm text-muted">
-                  Clip playback is not available yet.
-                </div>
+                <AlertClip mediaId={a.evidence.media_id} />
               </section>
 
               {/* Confidence */}

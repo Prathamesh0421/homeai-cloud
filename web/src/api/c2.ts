@@ -1,6 +1,6 @@
 /** C2 Alert Tracking API client (docs/components/C2_ALERT_TRACKING.md §3). */
 
-import { ApiError, http, type Page } from "./http";
+import { ApiError, getToken, http, type Page } from "./http";
 
 export type AlertStatus = "open" | "acknowledged" | "resolved" | "false_positive";
 export type Severity = "critical" | "high" | "medium" | "low";
@@ -295,6 +295,28 @@ export async function getAlertView(token: string): Promise<AlertView> {
     );
   }
   return parsed.data;
+}
+
+/**
+ * C1's presigned playback URL for an alert's clip, with the signed-in user's own token (C2-11,
+ * contract §4.4: owners and cloud staff in scope). Plain fetch, not ``http``: a 401 from C1 must
+ * not sign the user out of C2's pages, the player just shows no recording.
+ */
+export async function getClipUrl(mediaId: string): Promise<string> {
+  const token = getToken();
+  const resp = await fetch(`/api/v1/clips/${encodeURIComponent(mediaId)}/playback-url`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  let parsed: { data?: { url?: string }; error?: { code?: string; message?: string } } | undefined;
+  try {
+    parsed = await resp.json();
+  } catch {
+    parsed = undefined; // e.g. an HTML error page from the gateway
+  }
+  if (!resp.ok || !parsed?.data?.url) {
+    throw new ApiError(resp.status, parsed?.error?.code ?? "unknown", parsed?.error?.message ?? resp.statusText, undefined);
+  }
+  return parsed.data.url;
 }
 
 export const c2Keys = {

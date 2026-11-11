@@ -1,0 +1,140 @@
+% ============================================================================
+%  Shared preamble for HomeAI Cloud -- Deliverable #2 Component Design
+%  One \input-able preamble used by all four per-member main files.
+%  Compiler: pdfLaTeX (Overleaf default). XeLaTeX / LuaLaTeX also work.
+% ============================================================================
+
+% ---------- Fonts and encoding ----------
+\usepackage{iftex}
+\ifPDFTeX
+  \usepackage[T1]{fontenc}
+  \usepackage[utf8]{inputenc}
+  \usepackage{textcomp}
+  \IfFileExists{lmodern.sty}{\usepackage{lmodern}}{}
+\else
+  \usepackage{fontspec}
+\fi
+\usepackage{amsmath,amssymb}
+\usepackage{newunicodechar}
+\newunicodechar{→}{\ensuremath{\rightarrow}}
+\newunicodechar{←}{\ensuremath{\leftarrow}}
+\newunicodechar{≤}{\ensuremath{\le}}
+\newunicodechar{≥}{\ensuremath{\ge}}
+\newunicodechar{×}{\ensuremath{\times}}
+\newunicodechar{·}{\textperiodcentered{}}
+\newunicodechar{σ}{\ensuremath{\sigma}}
+\newunicodechar{✓}{\checkmark}
+\IfFileExists{lmodern.sty}{\IfFileExists{microtype.sty}{\usepackage{microtype}}{}}{}
+
+% ---------- Page layout ----------
+\usepackage[margin=0.85in,headheight=15pt]{geometry}
+\usepackage{parskip}
+\setlength{\emergencystretch}{3em}
+\setlength{\parskip}{3pt plus 1pt minus 1pt}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{\small HomeAI Cloud \textperiodcentered{} \compheadtitle}
+\fancyhead[R]{\small CMPE 281 \textperiodcentered{} Deliverable \#2}
+\fancyfoot[C]{\small \thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+\setcounter{secnumdepth}{3}
+\setcounter{tocdepth}{2}
+
+% ---------- Colours, graphics ----------
+\usepackage{xcolor}
+\definecolor{linkblue}{RGB}{20,70,160}
+\usepackage{graphicx}
+\usepackage{float}
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\bottomfraction}{0.75}
+\renewcommand{\textfraction}{0.06}
+\renewcommand{\floatpagefraction}{0.80}
+\setlength{\textfloatsep}{8pt plus 2pt minus 2pt}
+\setlength{\intextsep}{8pt plus 2pt minus 2pt}
+\usepackage[font=small,labelfont=bf,skip=4pt]{caption}
+
+% ---------- Tables ----------
+\usepackage{longtable,booktabs,array,tabularx}
+\usepackage{etoolbox}
+\AtBeginEnvironment{longtable}{\scriptsize\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.15}}
+\AtBeginEnvironment{tabularx}{\footnotesize\setlength{\tabcolsep}{4pt}\renewcommand{\arraystretch}{1.15}}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+% ---------- Lists ----------
+\usepackage{enumitem}
+\setlist[itemize]{topsep=2pt,itemsep=1pt,parsep=0pt,leftmargin=1.3em}
+\setlist[enumerate]{topsep=2pt,itemsep=1pt,parsep=0pt,leftmargin=1.6em}
+
+% ---------- Code / pseudocode / JSON ----------
+\usepackage{fvextra}
+\usepackage{framed}
+\definecolor{shadecolor}{RGB}{246,247,249}
+\newenvironment{Shaded}{\begin{snugshade}}{\end{snugshade}}
+\DefineVerbatimEnvironment{Code}{Verbatim}{breaklines,breakanywhere,fontsize=\scriptsize,xleftmargin=2pt}
+
+% ---------- Hyperlinks ----------
+\PassOptionsToPackage{hyphens}{url}
+\usepackage[unicode]{hyperref}
+\IfFileExists{xurl.sty}{\usepackage{xurl}}{}
+\urlstyle{same}
+\hypersetup{colorlinks=true, linkcolor=linkblue, urlcolor=linkblue, citecolor=linkblue}
+\usepackage{bookmark}
+
+% ---------- Figure helper: \figw{file-stem}{width fraction}{caption}{label} ----------
+% Figures live in figures/<Cx>/<stem>.png ; agents pass e.g. C3/c3-class
+\newcommand{\figw}[4]{%
+  \begin{figure}[htbp]\centering
+  \includegraphics[width=#2\textwidth]{figures/#1}
+  \caption{#3}\label{#4}
+  \end{figure}}
+
+% ---------- breakable underscore: long identifiers in \texttt may wrap after "_" ----------
+\makeatletter
+\DeclareRobustCommand{\_}{\ifmmode\nfss@text{\textunderscore}\else\textunderscore\allowbreak\fi}
+\makeatother
+\pdfstringdefDisableCommands{\def\_{_}}
+% ---------- Pinned figure helper: \figH{file-stem}{width}{caption}{label} ----------
+% Placed exactly here ([H]) so figures stay inside their own section.
+\newcommand{\figH}[4]{%
+  \begin{figure}[H]\centering
+  \includegraphics[width=#2\textwidth]{figures/#1}
+  \caption{#3}\label{#4}
+  \end{figure}}
+\usepackage{pdflscape}
+
+% ---------- Per-member title page ----------
+% \maketitlepage{component code}{component name}{member name}
+\newcommand{\maketitlepage}[3]{%
+\hypersetup{pageanchor=false}%
+\begin{titlepage}
+  \centering
+  \vspace*{1.2cm}
+  {\large Component Design Specification\par}
+  {\large for\par}
+  \vspace{0.8cm}
+  {\Huge\bfseries HomeAI Cloud\par}
+  \vspace{0.3cm}
+  {\LARGE Intelligent Cloud Platform for Smart Homes\par}
+  \vspace{0.9cm}
+  {\Large Component #1: #2\par}
+  \vspace{0.3cm}
+  {\large Version 1.0\par}
+  \vspace{0.2cm}
+  {\large Deliverable \#2 \textperiodcentered{} Project Option \#1\par}
+  \vfill
+  {\large Prepared by\par}
+  \vspace{0.3cm}
+  \begin{tabular}{llL{6.0cm}}
+    \toprule
+    \textbf{Member} & \textbf{Name} & \textbf{Component owned} \\
+    \midrule
+    #3 & #1 #2 \\
+    \bottomrule
+  \end{tabular}
+  \vfill
+  {\large San Jos\'e State University\par}
+  {\large CMPE 281 Cloud Technologies \textperiodcentered{} Instructor: Jerry Gao, Ph.D.\par}
+  {\large November 2026\par}
+\end{titlepage}\hypersetup{pageanchor=true}}

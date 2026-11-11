@@ -10,8 +10,14 @@ from homeai_common.errors import ApiError, ErrorEnvelope
 from homeai_common.pagination import Envelope, data_response
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_clock, get_detection_reader, get_house_reader, get_session
-from app.gateways.types import DetectionReader, HouseReader
+from app.api.deps import (
+    get_clip_reader,
+    get_clock,
+    get_detection_reader,
+    get_house_reader,
+    get_session,
+)
+from app.gateways.types import ClipUrlReader, DetectionReader, HouseReader
 from app.schemas.alert_view import AlertView
 from app.services.alert_service import AlertService
 from app.services.alert_view import AlertViewService
@@ -50,9 +56,12 @@ def view_alert(
     session: Session = Depends(get_session),
     houses: HouseReader = Depends(get_house_reader),
     detections: DetectionReader | None = Depends(get_detection_reader),
+    clips: ClipUrlReader | None = Depends(get_clip_reader),
     clock: Callable[[], datetime] = Depends(get_clock),
 ):
     service = AlertViewService(
-        links=request.app.state.links, alerts=AlertService(session, houses, detections)
+        links=request.app.state.links,
+        alerts=AlertService(session, houses, detections),
+        clips=clips,
     )
     return data_response(service.view(token, clock()))

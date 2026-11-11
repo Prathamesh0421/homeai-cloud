@@ -315,7 +315,7 @@ export default function SettingsPage() {
               </div>
               <p className="mt-1.5 text-xs text-muted">
                 Low raises the confidence needed to alert (fewer alerts); high lowers it (more alerts).
-                Critical alerts bypass quiet hours.
+                Critical and high alerts bypass quiet hours.
               </p>
             </fieldset>
           </div>

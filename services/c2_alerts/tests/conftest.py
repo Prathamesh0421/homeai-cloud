@@ -34,6 +34,7 @@ def settings(monkeypatch) -> Settings:
         demo_mode=False,
         alert_view_key="a2V5LWZvci1jMi10ZXN0cy0wMDAwMDAwMDAwMDAwMDA=",  # base64, 32 bytes
         jobs_enabled=False,  # no scheduler threads in tests; the jobs are called directly
+        service_client_secret=None,  # no real C1 playback calls; tests inject FakeClipReader
     )
 
 

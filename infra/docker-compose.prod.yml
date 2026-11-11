@@ -53,6 +53,8 @@ services:
     environment:
       RUN_MIGRATIONS: "1"
       DEMO_MODE: "1"
+      # Demo: the online -> offline flip shows within seconds (default 60 s).
+      C1_CONNECTIVITY_INTERVAL_S: "10"
     depends_on:
       c4-dashboard:
         condition: service_healthy

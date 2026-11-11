@@ -1,0 +1,82 @@
+\documentclass[11pt,letterpaper]{article}
+% ============================================================================
+%  HomeAI Cloud -- Deliverable #2, combined GROUP submission
+%  One PDF containing every member's component design (C1--C4).
+%  Each component is a Part with its own Sections 1--5.
+% ============================================================================
+\newcommand{\compheadtitle}{Component Design}
+\input{preamble}
+
+% Restart section numbers in every Part so each component reads 1--5,
+% and keep hyperlink targets unique across parts.
+\makeatletter
+\@addtoreset{section}{part}
+\makeatother
+\renewcommand{\theHsection}{\thepart.\arabic{section}}
+
+% Part opener: new page, header text, part heading with the owner's name
+\newcommand{\componentpart}[3]{%
+  \clearpage
+  \renewcommand{\compheadtitle}{#1 #2}%
+  \part[#1 #2 (#3)]{#1: #2\\[6pt]\large Component owner: #3}}
+
+\begin{document}
+
+% ---------------- Group title page ----------------
+\hypersetup{pageanchor=false}
+\begin{titlepage}
+  \centering
+  \vspace*{1.2cm}
+  {\large Component Design Specification\par}
+  \vspace{0.8cm}
+  {\Huge\bfseries HomeAI Cloud\par}
+  \vspace{0.3cm}
+  {\LARGE Intelligent Cloud Platform for Smart Homes\par}
+  \vspace{0.9cm}
+  {\Large Group Submission: Components C1--C4\par}
+  \vspace{0.3cm}
+  {\large Version 1.0\par}
+  \vspace{0.2cm}
+  {\large Deliverable \#2 \textperiodcentered{} Project Option \#1\par}
+  \vfill
+  {\large Prepared by\par}
+  \vspace{0.3cm}
+  \begin{tabular}{lL{5.2cm}L{6.2cm}}
+    \toprule
+    \textbf{Member} & \textbf{Name} & \textbf{Component owned} \\
+    \midrule
+    Member 1 & Ekant Kapgate              & C1 Home-Based IoT Device Manager \\
+    Member 2 & Prathamesh Ravindra Sawant & C2 Alert Tracking and Monitor \\
+    Member 3 & Renuka Prasad Patwari      & C3 System Database Management \\
+    Member 4 & Mohit Manoj Barade         & C4 System Dashboard \\
+    \bottomrule
+  \end{tabular}
+  \vfill
+  {\large San Jos\'e State University\par}
+  {\large CMPE 281 Cloud Technologies \textperiodcentered{} Instructor: Jerry Gao, Ph.D.\par}
+  {\large November 2026\par}
+\end{titlepage}
+\hypersetup{pageanchor=true}
+
+\pagenumbering{roman}
+\tableofcontents
+\clearpage
+\pagenumbering{arabic}
+
+% ---------------- One part per member ----------------
+\componentpart{C1}{Home-Based IoT Device Manager}{Ekant Kapgate}
+\input{sections/C1/body}
+
+\componentpart{C2}{Alert Tracking and Monitor}{Prathamesh Ravindra Sawant}
+\input{sections/C2/body}
+
+\componentpart{C3}{System Database Management}{Renuka Prasad Patwari}
+\input{sections/C3/body}
+
+\componentpart{C4}{System Dashboard}{Mohit Manoj Barade}
+\input{sections/C4/body}
+
+\clearpage
+\renewcommand{\compheadtitle}{References}
+\input{sections/references}
+\end{document}

@@ -7,6 +7,7 @@
 
     python scripts/demo/c2_fake_detection.py --label glass_break --conf 0.78 --house maple
     python scripts/demo/c2_fake_detection.py --resend <detection_id>     # idempotency: duplicate
+    ... --media-id <clip media_id>    # a clip already in C1 (Clip Library): the alert can play it
 
 Environment (defaults suit `make up` from the host):
     HOMEAI_API_URL               gateway, default http://localhost:8080 (C2 and C4 behind Caddy)
@@ -69,7 +70,13 @@ def body_of(r: httpx.Response) -> str:
 
 
 def build_detection(
-    *, label: str, confidence: float, house: str, room: str | None, now: datetime | None = None
+    *,
+    label: str,
+    confidence: float,
+    house: str,
+    room: str | None,
+    now: datetime | None = None,
+    media_id: str | None = None,
 ) -> dict[str, Any]:
     """An ``ai_detections`` document shaped exactly like C3's (contract §4.2)."""
     house_id = seed_ids.house_id(house)
@@ -78,7 +85,9 @@ def build_detection(
     labels = [{"label": label, "confidence": round(confidence, 3), "source_class": "demo"}]
     return {
         "_id": str(uuid.uuid4()),
-        "media_id": str(uuid.uuid4()),
+        # A real C1 clip (its media_id from the Clip Library) lets Alert Detail and the alert
+        # view play it (C2-11); a made-up one shows "The recording is not available".
+        "media_id": media_id or str(uuid.uuid4()),
         "tenant_id": seed_ids.tenant_of(house_id),
         "house_id": house_id,
         "room_id": room_id,
@@ -129,11 +138,19 @@ def main(
     parser.add_argument("--room", help="room name (Kitchen, Bathroom, ...) or room UUID")
     parser.add_argument("--resend", metavar="DETECTION_ID", help="send a stored detection again")
     parser.add_argument("--token", help="service token with alerts:evaluate (skips C4)")
+    parser.add_argument(
+        "--media-id", help="a clip's media_id in C1, so the alert can play it (default: made up)"
+    )
     args = parser.parse_args(argv)
     if not args.resend and not args.label:
         parser.error("--label is required (or --resend DETECTION_ID)")
     if not 0 <= args.conf <= 1:
         parser.error("--conf must be between 0 and 1")
+    if args.media_id:
+        try:
+            args.media_id = str(uuid.UUID(args.media_id))
+        except ValueError:
+            parser.error("--media-id must be a clip's UUID (C1 Clip Library)")
     production = os.environ.get("ENV", "local").lower() in {"prod", "production"}
     if production and os.environ.get("DEMO_MODE") != "1":
         print("refusing to fake detections with ENV=production and DEMO_MODE off", file=sys.stderr)
@@ -150,7 +167,11 @@ def main(
     else:
         try:
             doc = build_detection(
-                label=args.label, confidence=args.conf, house=args.house, room=args.room
+                label=args.label,
+                confidence=args.conf,
+                house=args.house,
+                room=args.room,
+                media_id=args.media_id,
             )
         except (ValueError, KeyError) as exc:
             parser.error(str(exc).strip("'\""))

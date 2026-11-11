@@ -1,0 +1,96 @@
+"""One-line field descriptions for the data dictionary (C3-13, docs §4.7).
+
+Keyed ``"<entity>.<field>"`` where entity is the Postgres table or Mongo collection name.
+Fields not listed here have no description (the dictionary leaves it empty). Hand-maintained
+and additive. Kept as a plain dict rather than YAML so the service needs no extra dependency.
+"""
+
+from __future__ import annotations
+
+DESCRIPTIONS: dict[str, str] = {
+    # --- Postgres: schema c3 (owned by C3) ---
+    "ml_models.model_id": "Primary key (UUID) of a registered model version.",
+    "ml_models.name": "Model family name, e.g. 'yamnet'.",
+    "ml_models.version": "Semantic version of this model within the family.",
+    "ml_models.framework": "ML framework the artifact runs on (default 'tensorflow').",
+    "ml_models.source": "Where the artifact comes from: 'bundled' (in the image) or 's3'.",
+    "ml_models.artifact_uri": "S3 URI of the model artifact when source='s3'.",
+    "ml_models.label_map": "Home-label mapping: source YAMNet classes, thresholds, frame rules.",
+    "ml_models.status": "Lifecycle: registered, evaluated, active, or retired (one active).",
+    "ml_models.metrics": "Summary metrics copied from the latest evaluation.",
+    "ml_models.notes": "Free-text notes about this version.",
+    "ml_models.created_by": "User (UUID) who registered the version.",
+    "ml_models.created_at": "When the version was registered.",
+    "ml_models.activated_by": "User (UUID) who activated the version, if any.",
+    "ml_models.activated_at": "When the version was activated, if any.",
+    "model_evaluations.evaluation_id": "Primary key (UUID) of an evaluation run.",
+    "model_evaluations.model_id": "Model version evaluated (FK to ml_models).",
+    "model_evaluations.dataset": "Name of the evaluation dataset used.",
+    "model_evaluations.metrics": "Accuracy, per-label precision/recall/F1, confusion, latency.",
+    "model_evaluations.started_at": "When the evaluation began.",
+    "model_evaluations.finished_at": "When the evaluation finished, if complete.",
+    "model_evaluations.created_by": "User (UUID) who ran the evaluation.",
+    "integrity_reports.report_id": "Primary key (UUID) of an integrity-check run.",
+    "integrity_reports.requested_by": "User (UUID) who requested the check, or null (nightly).",
+    "integrity_reports.scope": "Scope of the check, e.g. {tenant_id} (null = all tenants).",
+    "integrity_reports.status": "Run status: running, done, or failed.",
+    "integrity_reports.findings": "Array of findings: {kind, severity, entity_id, detail}.",
+    "integrity_reports.started_at": "When the check started.",
+    "integrity_reports.finished_at": "When the check finished, if complete.",
+    "data_dictionary_versions.version": "Primary key: the immutable dictionary version string.",
+    "data_dictionary_versions.document": "The generated dictionary document (entities, fields).",
+    "data_dictionary_versions.published_by": "User (UUID) who generated/published this version.",
+    "data_dictionary_versions.published_at": "When this version was published.",
+    # --- Mongo: C3-owned collections ---
+    "ai_detections._id": "Stable detection id (UUID); kept across re-classify.",
+    "ai_detections.media_id": "The clip this detection is for (links to media_events._id).",
+    "ai_detections.tenant_id": "Owning tenant (UUID).",
+    "ai_detections.house_id": "House where the clip was captured (UUID).",
+    "ai_detections.room_id": "Room where the clip was captured (UUID).",
+    "ai_detections.model": "Model identity used: {model_id, name, version}.",
+    "ai_detections.labels": "Per-home-label predictions above threshold.",
+    "ai_detections.top_label": "Highest-confidence home label (or 'none').",
+    "ai_detections.top_confidence": "Confidence of the top label (0..1).",
+    "ai_detections.detected_at": "Capture/detection time in UTC.",
+    "activity_patterns._id": "Composite key '<house>:<room>:<yyyy-mm-dd>' (UTC day).",
+    "activity_patterns.tenant_id": "Owning tenant (UUID).",
+    "activity_patterns.house_id": "House (UUID).",
+    "activity_patterns.room_id": "Room (UUID).",
+    "activity_patterns.date": "UTC day bucket (yyyy-mm-dd).",
+    "activity_patterns.hours": "24-element count of detections per UTC hour.",
+    "activity_patterns.counted": "Internal idempotency ledger of folded detection ids; not an API field.",
+    "activity_patterns.baseline_mean": "Per-hour mean over the trailing 28 active days.",
+    "activity_patterns.baseline_std": "Per-hour standard deviation over the baseline window.",
+    "activity_patterns.anomaly_score": "Today's anomaly score (0..1), or null during cold start.",
+    "activity_patterns.last_activity_at": "Most recent detection time folded into this bucket.",
+    "worker_heartbeats._id": "Worker id (hostname-pid).",
+    "worker_heartbeats.hostname": "Host the worker runs on.",
+    "worker_heartbeats.model_id": "Active model id the worker has loaded, if any.",
+    "worker_heartbeats.model_version": "Active model version the worker has loaded, if any.",
+    "worker_heartbeats.started_at": "When the worker process started.",
+    "worker_heartbeats.last_heartbeat": "Last heartbeat; a TTL index removes dead workers after 600s.",
+    "worker_heartbeats.processed": "Clips successfully processed by this worker.",
+    "worker_heartbeats.failed": "Clips this worker failed to process.",
+    "worker_heartbeats.avg_latency_ms": "Average per-clip classification latency (ms).",
+    "media_events._id": "Clip id (media_id); C1 owns the collection.",
+    "media_events.tenant_id": "Owning tenant (UUID).",
+    "media_events.house_id": "House (UUID).",
+    "media_events.room_id": "Room (UUID).",
+    "media_events.feed_id": "Camera feed (UUID).",
+    "media_events.media_kind": "Kind of media (e.g. audio).",
+    "media_events.s3": "S3 location: {bucket, key, size, content_type}.",
+    "media_events.captured_at": "When the clip was captured (UTC).",
+    "media_events.uploaded_at": "When the clip was uploaded (UTC).",
+    "media_events.status": "C3 processing status: queued, processing, analyzed, or failed.",
+    "media_events.attempts": "C3 processing attempt count.",
+    "media_events.claimed_at": "When a worker claimed the clip (UTC); cleared on analyze.",
+    "media_events.worker_id": "Worker currently processing the clip; cleared on analyze.",
+    "media_events.error": "Last processing error, if any.",
+    "media_events.detection_id": "The detection produced for this clip, once analyzed.",
+    "media_events.handoff_status": "C2 handoff status: none, pending, or done.",
+}
+
+
+def describe(entity: str, field: str) -> str | None:
+    """Return the one-line description for ``entity.field``, or None if undocumented."""
+    return DESCRIPTIONS.get(f"{entity}.{field}")

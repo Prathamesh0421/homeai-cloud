@@ -130,7 +130,7 @@ is_enabled, connectivity_status, config, config_version, last_clip_at, created_a
 | Method & path | Access | Request | Response / rules |
 |---|---|---|---|
 | `POST /ingest/clip` | iot_staff/cloud_staff JWT or service `ingest:write` | multipart: `feed_id, media_kind, captured_at, client_clip_id?, file` | 201 `{media_id, status:"queued", s3_key, duplicate:false}`; 200 `duplicate:true`; errors per decision table §4.1 |
-| `GET /clips` | S, O | `house_id, feed_id, room_id, status, from, to, page, page_size` | `{media_id, feed_id, feed_name, room_name, media_kind, captured_at, uploaded_at, size, status, detection_id}` |
+| `GET /clips` | S, O | `house_id, feed_id, room_id, status, from, to, page, page_size` | `{media_id, house_id, house_name, feed_id, feed_name, room_id, room_name, media_kind, captured_at, uploaded_at, size, status, detection_id, top_label}` **[D3: house and top label added]** |
 | `GET /clips/{media_id}` | S, O | — | full record + `top_label` (read from `ai_detections` if present, optional) |
 | `GET /clips/{media_id}/playback-url` | S, O, service `clips:playback` | — | `{url, expires_at}` (15 min presign) |
 Limits: file ≤ 50 MB (`413`), content types `audio/wav`, `audio/x-wav`, `audio/mpeg`, `video/mp4`;
@@ -219,12 +219,17 @@ playback URL returns presigned URL; `GET /feeds/stats` counts. Target coverage �
 | C1-15 | Deploy on EC2, verify with real S3; demo prep and video | infra §8 |
 
 ## 9. Acceptance checklist
-- [ ] All endpoints in §3 exist, documented in `/api/v1/docs/c1`, and follow the envelope.
-- [ ] Ingest is exactly-once (duplicate client id) and leaves no orphan object on DB failure (test proves it).
-- [ ] Feed state machine and connectivity behave per §4 (device simulator start/stop shows online→offline).
-- [ ] Owners are read-only and isolated; tenant isolation test passes.
+- [x] All endpoints in §3 exist, documented in `/api/v1/docs/c1`, and follow the envelope.
+- [x] Ingest is exactly-once (duplicate client id) and leaves no orphan object on DB failure (test proves it).
+- [x] Feed state machine and connectivity behave per §4 (device simulator start/stop shows online→offline).
+- [x] Owners are read-only and isolated; tenant isolation test passes.
 - [ ] C3 worker picks up clips uploaded by C1 (integration test I-1 in doc 05).
 - [ ] UI pages in §6 work on EC2 with real S3.
+
+Status 10 Nov 2026: the first four are checked by `make test-c1-full` (Postgres, Mongo, LocalStack)
+and on the local Docker stack (simulator start/stop, owner isolation with real C4 tokens). The UI
+pages (branch `c1/iot-ui`) work locally against LocalStack S3. Open: I-1 needs C3 running (EC2), and
+the UI on EC2 waits for the deploy (`docs/C1_DEMO_RUNBOOK.md` §0).
 
 ---
 ## 10. Deliverable #3 demo (C1)

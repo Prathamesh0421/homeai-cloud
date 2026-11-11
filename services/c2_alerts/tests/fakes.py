@@ -150,3 +150,15 @@ class FakeNotifier:
             }
         )
         return f"msg-{len(self.published)}"
+
+
+class FakeClipReader:
+    """C1 playback URLs by media_id; records the lookups (``None`` for an unknown clip)."""
+
+    def __init__(self, urls: dict[str, str] | None = None):
+        self.urls = dict(urls or {})
+        self.calls: list[str] = []
+
+    def playback_url(self, media_id: str) -> str | None:
+        self.calls.append(media_id)
+        return self.urls.get(media_id)

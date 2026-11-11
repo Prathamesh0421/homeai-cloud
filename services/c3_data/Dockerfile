@@ -8,9 +8,17 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# System packages: ffmpeg decodes clips to 16 kHz mono; libsndfile backs soundfile.
+# System packages: ffmpeg decodes clips to 16 kHz mono; libsndfile backs soundfile;
+# postgresql-client (pg_dump/pg_restore) and mongodb-database-tools (mongodump/mongorestore)
+# back the nightly backup/restore job (C3-14). mongodb-database-tools is not in the Debian repos,
+# so install the official .deb (amd64).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends ffmpeg libsndfile1 \
+    && apt-get install -y --no-install-recommends \
+        ffmpeg libsndfile1 postgresql-client ca-certificates wget \
+    && wget -q https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian12-x86_64-100.10.0.deb \
+        -O /tmp/mongodb-database-tools.deb \
+    && apt-get install -y --no-install-recommends /tmp/mongodb-database-tools.deb \
+    && rm -f /tmp/mongodb-database-tools.deb \
     && rm -rf /var/lib/apt/lists/*
 
 # Shared library first so image layers cache when only the service changes.

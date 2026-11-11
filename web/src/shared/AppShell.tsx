@@ -8,8 +8,10 @@ import {
   Activity,
   AlertTriangle,
   Bell,
+  Building2,
   Cog,
   Database,
+  Film,
   LayoutDashboard,
   type LucideIcon,
   LogOut,
@@ -45,15 +47,23 @@ const NAV: NavItem[] = [
   // Monitor
   { to: "/home/overview", label: "Home overview", icon: Activity, roles: ["house_owner"], group: "monitor" },
   { to: "/alerts", label: "Alerts", icon: Bell, roles: ["house_owner", "cloud_staff"], group: "monitor", badge: "open-alerts" },
+  { to: "/home/feeds", label: "My feeds", icon: Radio, roles: ["house_owner"], group: "monitor" },
   { to: "/iot/feeds", label: "Camera feeds", icon: Radio, roles: ["iot_staff", "cloud_staff"], group: "monitor" },
+  { to: "/home/clips", label: "Clip library", icon: Film, roles: ["house_owner"], group: "monitor" },
+  { to: "/iot/clips", label: "Clip library", icon: Film, roles: ["iot_staff", "cloud_staff"], group: "monitor" },
   { to: "/ops/dashboard", label: "System dashboard", icon: LayoutDashboard, roles: ["cloud_staff"], group: "monitor" },
+  { to: "/ops/activity", label: "Activity", icon: Activity, roles: ["cloud_staff"], group: "monitor" },
   // Configure
   { to: "/home/settings", label: "Services & settings", icon: Settings, roles: ["house_owner", "cloud_staff"], group: "configure" },
+  { to: "/iot/houses", label: "Houses & rooms", icon: Building2, roles: ["iot_staff", "cloud_staff"], group: "configure" },
   { to: "/ops/alert-rules", label: "Alert rules", icon: Cog, roles: ["cloud_staff"], group: "configure" },
   { to: "/ops/models", label: "Models", icon: AlertTriangle, roles: ["cloud_staff"], group: "configure" },
+  { to: "/ops/classify", label: "Test classify", icon: Radio, roles: ["cloud_staff"], group: "configure" },
   // Admin
   { to: "/ops/tenants", label: "Tenants & users", icon: Users, roles: ["cloud_staff"], group: "admin" },
-  { to: "/ops/records", label: "Records", icon: ScrollText, roles: ["cloud_staff"], group: "admin" },
+  { to: "/ops/records", label: "Records", icon: Database, roles: ["cloud_staff"], group: "admin" },
+  { to: "/ops/integrity", label: "Integrity", icon: ScrollText, roles: ["cloud_staff"], group: "admin" },
+  { to: "/ops/dictionary", label: "Data dictionary", icon: ScrollText, roles: ["cloud_staff"], group: "admin" },
 ];
 
 const GROUP_LABEL: Record<NavGroup, string> = {
