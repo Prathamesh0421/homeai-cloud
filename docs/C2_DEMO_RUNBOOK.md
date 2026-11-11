@@ -62,16 +62,16 @@ and the SNS topics; it only *reads* C4 settings/contacts, C1 houses/rooms, C3 de
    index `ux_media_id`; a classified clip gives `DuplicateKeyError`). Without `--media-id` the alert
    works but shows "The recording is not available".
 2. Tab 2 (Maple owner) → **Alerts**: the alert appears within 15 s (polling) — *Glass break*, high,
-   **Kitchen**, open. Clicking the row opens the side panel (recording, what was heard, timeline,
-   actions); click the **alert name** to open the full Alert Detail page.
+   **Kitchen**, open. Click the **alert name**, **View**, or the row — all open the same **Alert Detail**
+   page (evidence, timeline, contacts notified, actions).
 3. Phone: 3 emails, Alice → Bob → Carol (subject `[HomeAI] HIGH Glass break - Maple St`). Open one
    → **Alert View**, no login: type, severity, room, what was heard, "call 911", **Play recording**
    (C2 fetches the clip URL from C1 with its own service token). No owner PII.
-4. **Alert Detail** (via the alert name): **Play recording** (C1 clip, C2-11, the owner's login),
-   labels with the threshold, timeline, **Contacts notified** (only on this page, not in the side
-   panel: in-app + Alice/Bob/Carol sent, each with a demo link). *Resolve* is disabled while open →
-   type a note, then **Acknowledge** → type a note, then **Resolve** (notes are optional: type them
-   before clicking, or the timeline shows none). The phone's Alert View updates within 30 s.
+4. **Alert Detail**: **Play recording** (C1 clip, C2-11, the owner's login), labels with the threshold,
+   timeline, **Contacts notified** (in-app + Alice/Bob/Carol sent, each with a demo link). *Resolve*
+   is disabled while open → type a note, then **Acknowledge** → type a note, then **Resolve** (notes
+   are optional: type them before clicking, or the timeline shows none). The phone's Alert View
+   updates within 30 s.
 5. Swagger (tab 3): `POST /alerts/{id}/resolve` on an *open* alert → `409 invalid_state {from, to}`.
    Raise one first if none is open (the quiet-hours glass break below leaves one open).
 
@@ -142,3 +142,8 @@ acknowledges, checks the evidence, resolves with a note → a cough during quiet
 `cough.wav`; no alert) → ops tunes the rule after a false positive (*Mark false positive* in Alert Detail, then the
 rule's false-positive count in Alert Rules). Show the EC2 URL in the address bar once and one
 backend view (Swagger or SNS). Record twice, keep the better take; ≤ 7 min, MP4.
+
+## 5. Hand-off with Mohit (C4)
+Quiet hours, sensitivity, and contact order live in **Services & settings** (C4). If Mohit demos first,
+confirm those are back to seed defaults before you start (or coordinate who owns the quiet-hours
+proof). His script: [`docs/C4_DEMO_RUNBOOK.md`](C4_DEMO_RUNBOOK.md). Do not redeploy between slots.

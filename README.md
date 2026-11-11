@@ -312,7 +312,7 @@ Read these in order:
 5. [`docs/04_FRONTEND.md`](docs/04_FRONTEND.md): SPA structure, routes, shared UI kit
 6. Component plans: [C1](docs/components/C1_IOT_DEVICE_MANAGER.md) · [C2](docs/components/C2_ALERT_TRACKING.md) · [C3](docs/components/C3_DATABASE_AND_AI.md) · [C4](docs/components/C4_DASHBOARD_AND_AUTH.md)
 7. [`docs/05_INTEGRATION_AND_TESTING.md`](docs/05_INTEGRATION_AND_TESTING.md), [`docs/06_ROADMAP_AND_DEMO.md`](docs/06_ROADMAP_AND_DEMO.md), and [`docs/07_DEMO_NOV_11.md`](docs/07_DEMO_NOV_11.md) (demo priority until 11 Nov)
-8. C2 live demo notes: [`docs/C2_DEMO_RUNBOOK.md`](docs/C2_DEMO_RUNBOOK.md)
+8. Live demo runbooks: [C1](docs/C1_DEMO_RUNBOOK.md) · [C2](docs/C2_DEMO_RUNBOOK.md) (Prathamesh) · [C4](docs/C4_DEMO_RUNBOOK.md) (Mohit)
 
 Contract changes are recorded in [`docs/CHANGELOG.md`](docs/CHANGELOG.md).
 
