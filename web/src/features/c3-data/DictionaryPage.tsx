@@ -13,6 +13,7 @@ import {
 } from "../../api/c3";
 import { ApiError } from "../../api/http";
 import { Button, EmptyState, ErrorState, useToasts } from "../../shared";
+import { BookOpen } from "lucide-react";
 
 export default function DictionaryPage() {
   const qc = useQueryClient();
@@ -94,7 +95,16 @@ export default function DictionaryPage() {
         <div className="py-8 text-center text-sm text-muted">Loading dictionary…</div>
       ) : dict.isError ? (
         dict.error instanceof ApiError && dict.error.status === 404 ? (
-          <EmptyState title="No dictionary yet" description="Generate the first version from the live schema." />
+          <EmptyState
+            title="No dictionary yet"
+            description="Generate the first version from the live schema."
+            icon={<BookOpen className="h-8 w-8" />}
+            action={
+              <Button onClick={() => generate.mutate()} disabled={generate.isPending}>
+                {generate.isPending ? "Generating…" : "Generate first version"}
+              </Button>
+            }
+          />
         ) : (
           <ErrorState
             message={

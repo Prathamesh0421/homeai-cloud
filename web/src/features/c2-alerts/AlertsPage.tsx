@@ -1,9 +1,14 @@
-/** Alerts list (/alerts): filters, newest first, polls every 15 s (the in-app channel). */
+/** Alerts list (/alerts): filters, newest first, polls every 15 s (the in-app channel).
+ *
+ * Polling pauses when the tab is hidden. The header shows a pulsing "Live" dot
+ * with "updated Xs ago" instead of a static "Updates every 15 s" string. Rows
+ * that arrive in a poll are briefly highlighted.
+ */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ChevronDown, X } from "lucide-react";
+import { ChevronDown, X, Bell } from "lucide-react";
 import {
   ALERT_STATUSES,
   SEVERITIES,
@@ -77,6 +82,33 @@ export function useNewCriticals(
   return { fresh, dismiss: () => setFresh([]) };
 }
 
+/** Ids of rows (any severity) that a poll of the same filters and page brought in, for
+ * `HIGHLIGHT_MS`. A filter or page change only sets a new baseline, like useNewCriticals. */
+export const HIGHLIGHT_MS = 2000;
+export function useArrivedIds(
+  rows: AlertSummary[] | undefined,
+  queryKey: string,
+  isPlaceholder: boolean,
+): Set<string> {
+  const seen = useRef<{ key: string; ids: Set<string> } | null>(null);
+  const [arrivedIds, setArrivedIds] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    if (!rows || isPlaceholder) return;
+    const ids = new Set(rows.map((r) => r.alert_id));
+    const before = seen.current;
+    seen.current = { key: queryKey, ids };
+    if (before?.key !== queryKey) return;
+    const arrived = rows.filter((r) => !before.ids.has(r.alert_id)).map((r) => r.alert_id);
+    if (arrived.length) setArrivedIds(new Set(arrived));
+  }, [rows, queryKey, isPlaceholder]);
+  useEffect(() => {
+    if (arrivedIds.size === 0) return;
+    const t = window.setTimeout(() => setArrivedIds(new Set()), HIGHLIGHT_MS);
+    return () => window.clearTimeout(t);
+  }, [arrivedIds]);
+  return arrivedIds;
+}
+
 export default function AlertsPage() {
   const [params, setParams] = useSearchParams();
   const navigate = useNavigate();
@@ -86,7 +118,7 @@ export default function AlertsPage() {
   const alerts = useQuery({
     queryKey: c2Keys.alerts(filters),
     queryFn: () => listAlerts(filters),
-    refetchInterval: POLL_MS,
+    refetchInterval: () => (typeof document !== "undefined" && document.hidden ? false : POLL_MS),
     placeholderData: keepPreviousData,
   });
   const types = useQuery({ queryKey: c2Keys.alertTypes(), queryFn: listAlertTypes, staleTime: 3_600_000 });
@@ -95,6 +127,25 @@ export default function AlertsPage() {
     JSON.stringify(filters),
     alerts.isPlaceholderData,
   );
+
+  // "Live · updated Xs ago" indicator (ticker is NOT in aria-live — only "Refreshing…" is).
+  const [updatedAgo, setUpdatedAgo] = useState<number | null>(null);
+  const lastFetchedAt = useRef<number | null>(null);
+  useEffect(() => {
+    if (alerts.isFetching) {
+      lastFetchedAt.current = Date.now();
+      setUpdatedAgo(0);
+    }
+  }, [alerts.isFetching]);
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      if (lastFetchedAt.current !== null) setUpdatedAgo(Math.round((Date.now() - lastFetchedAt.current) / 1000));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, []);
+
+  // Reset baseline when filters/page change so those rows are not treated as "fresh".
+  const freshIds = useArrivedIds(alerts.data?.data, JSON.stringify(filters), alerts.isPlaceholderData);
 
   // House filter: the owner's houses, plus any house seen in results (names come from C1;
   // until a house shows up in results it is labelled by the end of its id, which differs).
@@ -203,8 +254,20 @@ export default function AlertsPage() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Alerts</h1>
-        <span className="text-xs text-muted" aria-live="polite">
-          {alerts.isFetching ? "Refreshing…" : "Updates every 15 s"}
+        {/* Ticker is not aria-live (would announce every second). "Refreshing…" is live;
+            new critical alerts use the role="alert" banner below. */}
+        <span className="inline-flex items-center gap-1.5 text-xs text-muted">
+          <span className="relative flex h-2 w-2" aria-hidden="true">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success/60" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-success" />
+          </span>
+          {alerts.isFetching ? (
+            <span aria-live="polite">Refreshing…</span>
+          ) : updatedAgo === null ? (
+            <span>Live</span>
+          ) : (
+            <span>Live · updated {updatedAgo}s ago</span>
+          )}
         </span>
       </div>
 
@@ -308,6 +371,7 @@ export default function AlertsPage() {
               ? "New alerts appear here within 15 seconds. Monitoring all houses across tenants."
               : `New alerts appear here within 15 seconds. Monitoring ${session?.houseIds.length ?? 0} house${(session?.houseIds.length ?? 0) === 1 ? "" : "s"}.`
           }
+          icon={<Bell className="h-8 w-8" />}
         />
       ) : (
         <>
@@ -316,6 +380,7 @@ export default function AlertsPage() {
             rows={alerts.data.data}
             rowKey={(a) => a.alert_id}
             onRowClick={(a) => setDrawerId(a.alert_id)}
+            rowClassName={(a) => (freshIds.has(a.alert_id) ? "bg-accent-soft/60" : undefined)}
           />
           <Pagination
             page={alerts.data.meta.page}

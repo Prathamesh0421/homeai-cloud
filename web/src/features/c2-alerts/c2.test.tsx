@@ -1,9 +1,9 @@
 /** C2-13: api/c2.ts, display helpers, Alerts list and Alert Detail. */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { alertAction, alertsQuery, getAlert, listAlerts } from "../../api/c2";
-import AlertsPage from "./AlertsPage";
+import { act, fireEvent, renderHook, screen, waitFor, within } from "@testing-library/react";
+import { alertAction, alertsQuery, getAlert, listAlerts, type AlertSummary } from "../../api/c2";
+import AlertsPage, { HIGHLIGHT_MS, useArrivedIds } from "./AlertsPage";
 import AlertDetailPage from "./AlertDetailPage";
 import {
   dayEndIso,
@@ -446,5 +446,48 @@ describe("AlertDetailPage", () => {
     stubFetch({ "GET /api/v1/alerts/a1": { status, body: { error: { code: "x", message: "x" } } } });
     renderDetail();
     expect(await screen.findByText(text)).toBeInTheDocument();
+  });
+});
+
+describe("useArrivedIds (new-row highlight)", () => {
+  const a = summary({ alert_id: "a1" });
+  const b = summary({ alert_id: "a2" });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("highlights a row a poll of the same filters brings in, then clears it", () => {
+    vi.useFakeTimers();
+    const { result, rerender } = renderHook(
+      ({ rows, key }: { rows: AlertSummary[]; key: string }) => useArrivedIds(rows, key, false),
+      { initialProps: { rows: [] as AlertSummary[], key: "open" } },
+    );
+    expect(result.current.size).toBe(0);
+    rerender({ rows: [a], key: "open" }); // first alert into an empty list counts
+    expect([...result.current]).toEqual(["a1"]);
+    rerender({ rows: [b, a], key: "open" });
+    expect([...result.current]).toEqual(["a2"]);
+    act(() => vi.advanceTimersByTime(HIGHLIGHT_MS));
+    expect(result.current.size).toBe(0);
+  });
+
+  it("does not highlight rows after a filter or page change", () => {
+    const { result, rerender } = renderHook(
+      ({ rows, key }: { rows: AlertSummary[]; key: string }) => useArrivedIds(rows, key, false),
+      { initialProps: { rows: [a], key: "open" } },
+    );
+    rerender({ rows: [b], key: "resolved" });
+    expect(result.current.size).toBe(0);
+  });
+
+  it("ignores placeholder rows kept from the previous filter", () => {
+    const { result, rerender } = renderHook(
+      ({ rows, key, ph }: { rows: AlertSummary[]; key: string; ph: boolean }) => useArrivedIds(rows, key, ph),
+      { initialProps: { rows: [a], key: "open", ph: false } },
+    );
+    rerender({ rows: [a], key: "resolved", ph: true });
+    rerender({ rows: [b], key: "resolved", ph: false });
+    expect(result.current.size).toBe(0);
   });
 });

@@ -13,6 +13,7 @@ import {
 import { ApiError } from "../../api/http";
 import { Button, EmptyState, ErrorState, useToasts } from "../../shared";
 import { labelText, relativeTime } from "./format";
+import { ShieldCheck } from "lucide-react";
 
 const POLL_MS = 5_000;
 
@@ -88,7 +89,16 @@ export default function IntegrityPage() {
             onRetry={() => reports.refetch()}
           />
         ) : reports.data.length === 0 ? (
-          <EmptyState title="No checks yet" description="Run a check to scan for data faults across tenants." />
+          <EmptyState
+            title="No checks yet"
+            description="Run a check to scan for data faults across tenants."
+            icon={<ShieldCheck className="h-8 w-8" />}
+            action={
+              <Button onClick={() => run.mutate()} disabled={run.isPending}>
+                {run.isPending ? "Starting…" : "Run first check"}
+              </Button>
+            }
+          />
         ) : (
           <ul className="divide-y divide-border rounded-xl border border-border bg-surface shadow-card">
             {reports.data.map((r) => (
