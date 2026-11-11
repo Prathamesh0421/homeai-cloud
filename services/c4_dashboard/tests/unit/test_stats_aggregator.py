@@ -32,6 +32,7 @@ def test_summary_marks_unavailable_when_upstreams_fail(monkeypatch):
     monkeypatch.setattr(stats_aggregator.c1_client, "fetch_feeds_stats", boom)
     monkeypatch.setattr(stats_aggregator.c2_client, "fetch_alerts_stats", boom)
     monkeypatch.setattr(stats_aggregator.c2_client, "fetch_recent_alerts", boom)
+    monkeypatch.setattr(stats_aggregator.c2_client, "fetch_open_alert_count", boom)
     monkeypatch.setattr(stats_aggregator.c3_client, "fetch_detections_stats", boom)
 
     principal = FakePrincipal(role="cloud_staff", tenant_id=None, house_ids=())
@@ -83,6 +84,7 @@ def test_summary_merges_live_buckets(monkeypatch):
             }
         ],
     )
+    monkeypatch.setattr(stats_aggregator.c2_client, "fetch_open_alert_count", lambda *a, **k: 7)
     monkeypatch.setattr(
         stats_aggregator.c3_client,
         "fetch_detections_stats",
@@ -98,7 +100,7 @@ def test_summary_merges_live_buckets(monkeypatch):
     )
     assert out["data"]["kpis"]["feeds_online"] == 3
     assert out["data"]["kpis"]["alerts"] == 3
-    assert out["data"]["kpis"]["open_alerts"] == 1
+    assert out["data"]["kpis"]["open_alerts"] == 7
     assert out["data"]["kpis"]["clips_classified"] == 42
     assert out["data"]["alerts_by_severity"]["critical"] == 2
     assert out["data"]["detections_top"][0]["label"] == "speech"

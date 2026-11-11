@@ -303,7 +303,11 @@ export default function AlertsPage() {
       ) : alerts.data.data.length === 0 ? (
         <EmptyState
           title="No alerts in this range"
-          description={`New alerts appear here within 15 seconds. Monitoring ${session?.houseIds.length ?? "your"} house${(session?.houseIds.length ?? 0) === 1 ? "" : "s"}.`}
+          description={
+            session?.role === "cloud_staff"
+              ? "New alerts appear here within 15 seconds. Monitoring all houses across tenants."
+              : `New alerts appear here within 15 seconds. Monitoring ${session?.houseIds.length ?? 0} house${(session?.houseIds.length ?? 0) === 1 ? "" : "s"}.`
+          }
         />
       ) : (
         <>
