@@ -34,7 +34,6 @@ import {
   type Column,
 } from "../../shared";
 import { Button } from "@/components/ui/button";
-import { AlertDrawer } from "./AlertDrawer";
 import { dayEndIso, dayStartIso, labelText, percent, relativeTime } from "./format";
 
 export const POLL_MS = 15_000;
@@ -165,8 +164,6 @@ export default function AlertsPage() {
     setParams(next, { replace: true });
   }
 
-  const [drawerId, setDrawerId] = useState<string | null>(null);
-
   const columns: Column<AlertSummary>[] = [
     {
       key: "severity",
@@ -240,7 +237,7 @@ export default function AlertsPage() {
               size="sm"
               onClick={(e) => {
                 e.stopPropagation();
-                setDrawerId(a.alert_id);
+                navigate(`/alerts/${a.alert_id}`);
               }}
             >
               View
@@ -379,7 +376,7 @@ export default function AlertsPage() {
             columns={columns}
             rows={alerts.data.data}
             rowKey={(a) => a.alert_id}
-            onRowClick={(a) => setDrawerId(a.alert_id)}
+            onRowClick={(a) => navigate(`/alerts/${a.alert_id}`)}
             rowClassName={(a) => (freshIds.has(a.alert_id) ? "bg-accent-soft/60" : undefined)}
           />
           <Pagination
@@ -390,8 +387,6 @@ export default function AlertsPage() {
           />
         </>
       )}
-
-      <AlertDrawer alertId={drawerId} onOpenChange={(open) => !open && setDrawerId(null)} />
     </div>
   );
 }

@@ -200,7 +200,7 @@ describe("AlertsPage", () => {
   it("opens an alert from its row or link", async () => {
     stubFetch({ "GET /api/v1/alerts": { body: page([summary()]) }, "GET /api/v1/alert-types": { body: TYPES } });
     renderList();
-    // The alert type name is a deep link to the full detail page; the row itself opens a drawer.
+    // Name link, View, and row click all go to the full detail page.
     fireEvent.click(await screen.findByRole("link", { name: "Possible intrusion" }));
     expect(await screen.findByTestId("detail-route")).toBeInTheDocument();
   });
