@@ -10,6 +10,18 @@ import { ALERT_TYPES, TENANTS, page, renderPage, rule, signIn, stubFetch } from 
 
 const HOUSE = "22222222-0000-0000-0000-0000000000a1";
 const BATH = "33333333-0000-0000-0000-00000000a104";
+const PINE = "22222222-0000-0000-0000-0000000000b1";
+
+// C1's lists the pages read names from (staff see every tenant's houses).
+const C1_HOUSES = [
+  { house_id: HOUSE, tenant_id: TENANTS[0].tenant_id, name: "Maple St" },
+  { house_id: PINE, tenant_id: TENANTS[1].tenant_id, name: "Pine Rd" },
+].map((h) => ({ ...h, address: null, timezone: "UTC", owner_user_id: null, created_at: "", updated_at: "" }));
+const MAPLE_ROOMS = [
+  { room_id: BATH, house_id: HOUSE, name: "Bathroom", room_type: "bathroom", created_at: "" },
+  { room_id: "33333333-0000-0000-0000-00000000a101", house_id: HOUSE, name: "Kitchen", room_type: "kitchen", created_at: "" },
+];
+const C1_DOWN = { status: 503, body: { error: { code: "dependency_unavailable", message: "C1 down" } } };
 
 beforeEach(() => {
   sessionStorage.clear();
@@ -25,6 +37,8 @@ function routes(extra: Record<string, Parameters<typeof stubFetch>[0][string]> =
     "GET /api/v1/alert-rules": { body: page(rules) },
     "GET /api/v1/alert-types": { body: page(ALERT_TYPES) },
     "GET /api/v1/tenants": { body: { data: TENANTS } },
+    "GET /api/v1/houses": { body: page(C1_HOUSES) },
+    [`GET /api/v1/houses/${HOUSE}/rooms`]: { body: { data: MAPLE_ROOMS } },
     ...extra,
   });
 }
@@ -37,6 +51,16 @@ function renderRules(path = "/ops/alert-rules") {
 function form() {
   const title = screen.getByText(/^(New alert rule|Edit rule: )/);
   return within(title.closest("form")!);
+}
+
+/** Pick Maple St (and optionally a room) once C1's lists have loaded. */
+async function pickHouse(room?: string) {
+  await waitFor(() => expect(form().getByRole("option", { name: "Maple St · Acme Care" })).toBeInTheDocument());
+  fireEvent.change(form().getByLabelText("House"), { target: { value: HOUSE } });
+  if (room) {
+    await waitFor(() => expect(form().getByRole("option", { name: "Bathroom" })).toBeInTheDocument());
+    fireEvent.change(form().getByLabelText(/^Room/), { target: { value: room } });
+  }
 }
 
 async function tenantsLoaded() {
@@ -142,7 +166,7 @@ describe("RulesPage", () => {
     expect(within(rows[0]).getByText("default")).toBeInTheDocument(); // severity from the type
     expect(within(rows[0]).getByText("55%")).toBeInTheDocument();
     expect(within(rows[0]).getByRole("switch", { name: "Disable rule" })).toBeChecked();
-    expect(within(rows[1]).getByText("House …00a1 · room …a104")).toBeInTheDocument();
+    expect(await within(rows[1]).findByText("Maple St · Bathroom")).toBeInTheDocument(); // names from C1
     expect(within(rows[1]).getByText("Fall indicator")).toBeInTheDocument();
     expect(within(rows[1]).getByRole("switch", { name: "Enable rule" })).not.toBeChecked();
     expect(within(rows[1]).getByText("2")).toBeInTheDocument();
@@ -162,11 +186,39 @@ describe("RulesPage", () => {
     });
   });
 
-  it("applies the house filter only for a whole id", async () => {
+  it("filters by house, picked by name; the tenant filter narrows the houses", async () => {
     const { calls } = routes();
     renderRules();
     await screen.findAllByRole("listitem");
-    const input = screen.getByRole("textbox", { name: /^House id/ });
+    const house = screen.getByRole("combobox", { name: /^House/ });
+    await waitFor(() => expect(within(house).getByRole("option", { name: "Pine Rd" })).toBeInTheDocument());
+    fireEvent.change(house, { target: { value: HOUSE } });
+    await waitFor(() => {
+      const lists = calls.filter((c) => c.url.startsWith("/api/v1/alert-rules?"));
+      expect(lists[lists.length - 1].url).toContain(`house_id=${HOUSE}`);
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: /^Tenant/ }), { target: { value: TENANTS[1].tenant_id } });
+    expect(within(house).queryByRole("option", { name: "Maple St" })).not.toBeInTheDocument();
+    expect(within(house).getByRole("option", { name: "Pine Rd" })).toBeInTheDocument();
+    // Maple belongs to the other tenant, so the house filter is cleared with the tenant change.
+    expect(house).toHaveValue("");
+    await waitFor(() => {
+      const lists = calls.filter((c) => c.url.startsWith("/api/v1/alert-rules?"));
+      const last = lists[lists.length - 1].url;
+      expect(last).toContain(`tenant_id=${TENANTS[1].tenant_id}`);
+      expect(last).not.toContain("house_id=");
+    });
+  });
+
+  it("without C1, shows ids and applies a typed house filter only for a whole id", async () => {
+    const { calls } = routes({ "GET /api/v1/houses": C1_DOWN }, [
+      rule({ rule_id: "r2", scope: "house", house_id: HOUSE, room_id: BATH }),
+    ]);
+    renderRules();
+    await screen.findAllByRole("listitem");
+    const input = await screen.findByRole("textbox", { name: /^House id/ });
+    // The house name is unknown, so a short id; the room's name still came from C1.
+    expect(await screen.findByText("House …00a1 · Bathroom")).toBeInTheDocument();
     fireEvent.change(input, { target: { value: "2222" } });
     expect(input).toHaveAttribute("aria-invalid", "true");
     fireEvent.change(input, { target: { value: HOUSE } });
@@ -174,7 +226,6 @@ describe("RulesPage", () => {
       const lists = calls.filter((c) => c.url.startsWith("/api/v1/alert-rules?"));
       expect(lists.map((c) => c.url.includes("house_id="))).toEqual([false, true]); // no partial ids
     });
-    expect(screen.getAllByText("Possible intrusion").length).toBeGreaterThan(0);
   });
 
   it("creates tenant defaults once a tenant is chosen", async () => {
@@ -275,13 +326,12 @@ describe("RuleForm", () => {
 
   it("creates a room rule for a house (the demo's fall-in-Bathroom rule)", async () => {
     const { calls } = await openNew();
-    fireEvent.change(form().getByLabelText("House id"), { target: { value: HOUSE } });
+    await pickHouse(BATH);
     fireEvent.change(form().getByLabelText("Alert type"), { target: { value: "fall" } });
     // Picking the type starts from its label and its default threshold.
     expect(form().getByRole("checkbox", { name: "Fall indicator" })).toBeChecked();
     expect(form().getByLabelText("Minimum confidence (0–1)")).toHaveAttribute("placeholder", "Type default 0.6");
     fireEvent.change(form().getByLabelText("Minimum confidence (0–1)"), { target: { value: "0.70" } });
-    fireEvent.change(form().getByLabelText(/^Room id/), { target: { value: BATH } });
     fireEvent.click(screen.getByRole("button", { name: "Create rule" }));
     expect(await screen.findByText("Rule created")).toBeInTheDocument();
     expect(calls.find((c) => c.method === "POST")!.body).toEqual({
@@ -295,13 +345,40 @@ describe("RuleForm", () => {
     expect(screen.queryByText("New alert rule")).not.toBeInTheDocument(); // form closes
   });
 
+  it("without C1, takes the house and room as typed ids", async () => {
+    const { calls } = routes({
+      "GET /api/v1/houses": C1_DOWN,
+      [`GET /api/v1/houses/${HOUSE}/rooms`]: C1_DOWN,
+      "POST /api/v1/alert-rules": { status: 201, body: { data: rule({ scope: "house", house_id: HOUSE }) } },
+    });
+    renderRules();
+    fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
+    fireEvent.change(await form().findByLabelText("House id"), { target: { value: HOUSE } });
+    fireEvent.change(await form().findByLabelText(/^Room id/), { target: { value: BATH } });
+    fireEvent.change(form().getByLabelText("Alert type"), { target: { value: "fall" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create rule" }));
+    await screen.findByText("Rule created");
+    expect(calls.find((c) => c.method === "POST")!.body).toMatchObject({ house_id: HOUSE, room_id: BATH });
+  });
+
+  it("names the house and keeps a room C1 no longer lists when editing", async () => {
+    const gone = "33333333-0000-0000-0000-00000000a1ff";
+    routes({}, [rule({ scope: "house", house_id: HOUSE, room_id: gone, alert_type_name: "Possible fall" })]);
+    renderRules();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    expect(await form().findByText("Maple St · Acme Care · Possible fall")).toBeInTheDocument();
+    const room = form().getByLabelText(/^Room/);
+    await waitFor(() => expect(room).toHaveValue(gone));
+    expect(within(room).getByRole("option", { name: "Room …a1ff (not in C1)" })).toBeInTheDocument();
+  });
+
   it("creates a tenant default without a house", async () => {
     const { calls } = await openNew();
     fireEvent.click(form().getByLabelText(/Tenant default/));
     await tenantsLoaded();
     fireEvent.change(form().getByLabelText("Tenant"), { target: { value: TENANTS[1].tenant_id } });
     fireEvent.change(form().getByLabelText("Alert type"), { target: { value: "intrusion" } });
-    expect(form().queryByLabelText(/^Room id/)).not.toBeInTheDocument();
+    expect(form().queryByLabelText(/^Room/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Create rule" }));
     await screen.findByText("Rule created");
     expect(calls.find((c) => c.method === "POST")!.body).toEqual({
@@ -315,7 +392,7 @@ describe("RuleForm", () => {
   it("shows client checks without calling the API", async () => {
     const { calls } = await openNew();
     fireEvent.click(screen.getByRole("button", { name: "Create rule" }));
-    expect(screen.getByText("Enter the house id (UUID)")).toBeInTheDocument();
+    expect(screen.getByText("Choose a house")).toBeInTheDocument();
     expect(screen.getByText("Choose an alert type")).toBeInTheDocument();
     expect(screen.getByText("Pick at least one label")).toBeInTheDocument();
     expect(calls.some((c) => c.method === "POST")).toBe(false);
@@ -336,9 +413,8 @@ describe("RuleForm", () => {
     });
     renderRules();
     fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
-    fireEvent.change(form().getByLabelText("House id"), { target: { value: HOUSE } });
+    await pickHouse(BATH);
     fireEvent.change(form().getByLabelText("Alert type"), { target: { value: "fall" } });
-    fireEvent.change(form().getByLabelText(/^Room id/), { target: { value: BATH } });
     fireEvent.click(screen.getByRole("button", { name: "Create rule" }));
     expect(await screen.findByText("room does not belong to the house")).toBeInTheDocument();
     expect(screen.getByText("New alert rule")).toBeInTheDocument(); // stays open
@@ -353,7 +429,7 @@ describe("RuleForm", () => {
     });
     renderRules();
     fireEvent.click(await screen.findByRole("button", { name: "New rule" }));
-    fireEvent.change(form().getByLabelText("House id"), { target: { value: HOUSE } });
+    await pickHouse();
     fireEvent.change(form().getByLabelText("Alert type"), { target: { value: "fall" } });
     fireEvent.click(screen.getByRole("button", { name: "Create rule" }));
     expect(await screen.findByText("an identical rule already exists")).toBeInTheDocument();

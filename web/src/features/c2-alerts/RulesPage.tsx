@@ -39,7 +39,8 @@ import {
 } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { labelText, percent } from "./format";
-import { RuleForm, UUID } from "./RuleForm";
+import { UUID, houseMap, useHouses, useRoomsOf } from "./c1Lookups";
+import { RuleForm } from "./RuleForm";
 
 const PAGE_SIZE = 100;
 const selectClass = "rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-sm text-ink";
@@ -91,8 +92,8 @@ export default function RulesPage() {
   const [disabling, setDisabling] = useState<AlertRule | null>(null);
   const [lastSync, setLastSync] = useState<SyncResult | null>(null);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
-  // The house filter is typed: it applies only when empty or a whole UUID (the API rejects a
-  // partial one with 422), not on every keystroke.
+  // When C1 cannot be reached the house filter is typed: it applies only when empty or a whole
+  // UUID (the API rejects a partial one with 422), not on every keystroke.
   const [houseText, setHouseText] = useState(params.get("house") ?? "");
 
   const rules = useQuery({
@@ -103,6 +104,18 @@ export default function RulesPage() {
   const types = useQuery({ queryKey: c2Keys.alertTypes(), queryFn: listAlertTypes, staleTime: 3_600_000 });
   const tenants = useQuery({ queryKey: ["c4", "tenants"], queryFn: fetchTenants, staleTime: 300_000 });
   const tenantName = (id: string) => tenants.data?.find((t) => t.tenant_id === id)?.name ?? short(id);
+  // House and room names from C1 (ids stay visible on hover; short ids when C1 has no name).
+  const houses = useHouses();
+  const houseById = houseMap(houses.data?.data);
+  const roomHouseIds = [
+    ...new Set((rules.data?.data ?? []).filter((r) => r.room_id && r.house_id).map((r) => r.house_id as string)),
+  ].sort();
+  const roomById = useRoomsOf(roomHouseIds);
+  const houseName = (id: string) => houseById.get(id)?.name ?? `House ${short(id)}`;
+  const roomName = (id: string) => roomById.get(id)?.name ?? `room ${short(id)}`;
+  const houseOptions = (houses.data?.data ?? []).filter(
+    (h) => !params.get("tenant") || h.tenant_id === params.get("tenant"),
+  );
 
   const reload = () => queryClient.invalidateQueries({ queryKey: ["c2", "rules"] });
 
@@ -111,6 +124,7 @@ export default function RulesPage() {
     if (value) next.set(name, value);
     else next.delete(name);
     if (name !== "page") next.delete("page");
+    if (name === "tenant" && !houses.isError) next.delete("house"); // the houses are per tenant
     setParams(next, { replace: true });
   }
 
@@ -263,21 +277,35 @@ export default function RulesPage() {
             ))}
           </select>
         </label>
-        <label className="text-xs text-muted">
-          House id{" "}
-          <input
-            className={selectClass}
-            value={houseText}
-            onChange={(e) => {
-              const text = e.target.value;
-              setHouseText(text);
-              const id = text.trim();
-              if (id === "" || UUID.test(id)) setFilter("house", id);
-            }}
-            aria-invalid={houseText.trim() !== "" && !UUID.test(houseText.trim())}
-            placeholder="any"
-          />
-        </label>
+        {houses.isError ? (
+          <label className="text-xs text-muted">
+            House id{" "}
+            <input
+              className={selectClass}
+              value={houseText}
+              onChange={(e) => {
+                const text = e.target.value;
+                setHouseText(text);
+                const id = text.trim();
+                if (id === "" || UUID.test(id)) setFilter("house", id);
+              }}
+              aria-invalid={houseText.trim() !== "" && !UUID.test(houseText.trim())}
+              placeholder="any"
+            />
+          </label>
+        ) : (
+          <label className="text-xs text-muted">
+            House{" "}
+            <select className={selectClass} value={params.get("house") ?? ""} onChange={(e) => setFilter("house", e.target.value)}>
+              <option value="">All</option>
+              {houseOptions.map((h) => (
+                <option key={h.house_id} value={h.house_id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label className="text-xs text-muted">
           Type{" "}
           <select className={selectClass} value={params.get("type") ?? ""} onChange={(e) => setFilter("type", e.target.value)}>
@@ -348,10 +376,13 @@ export default function RulesPage() {
                           <span className="block font-medium text-ink">{r.alert_type_name}</span>
                           <span className="block text-xs text-muted">{r.trigger_labels.map(labelText).join(", ")}</span>
                         </span>
-                        <span className="col-span-3 text-muted" title={r.house_id ?? ""}>
+                        <span
+                          className="col-span-3 text-muted"
+                          title={[r.house_id, r.room_id].filter(Boolean).join(" · ")}
+                        >
                           {r.scope === "tenant_default"
                             ? "Tenant default"
-                            : `House ${short(r.house_id ?? "")}${r.room_id ? ` · room ${short(r.room_id)}` : " · whole house"}`}
+                            : `${houseName(r.house_id ?? "")} · ${r.room_id ? roomName(r.room_id) : "whole house"}`}
                         </span>
                         <span className="col-span-2"><ConfidenceMini value={r.min_confidence} /></span>
                         <span className="col-span-2 inline-flex items-center gap-1">

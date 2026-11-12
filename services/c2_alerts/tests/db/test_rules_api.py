@@ -432,11 +432,10 @@ def test_openapi_lists_rule_routes(client):
     assert {"/api/v1/alert-types", RULES, f"{RULES}/defaults", f"{RULES}/{{rule_id}}"} <= set(paths)
 
 
-# STANDIN(C1-02): once the test DB has C1's real tables this becomes 422 "unknown house";
-# then assert that instead (it still proves the real reader is wired).
-def test_real_reader_wiring_reports_c1_not_deployed(settings, session, auth_header):
-    # Real C1HouseGateway over a real reader connection: c1.houses does not exist in the
-    # test database (C1 has not shipped its migration), so the API answers 503 c1.
+def test_real_reader_wiring_reads_c1(settings, session, auth_header):
+    # Real C1HouseGateway over its own reader connection: C1's tables exist (its migration ran
+    # in pg_engine), but that connection cannot see this test's uncommitted rows, so C1 answers
+    # "no such house". A 422 (not 503 c1) proves the reader reached c1.houses.
     from tests.db.conftest import DATABASE_URL
 
     app = create_app(settings.model_copy(update={"database_reader_url": DATABASE_URL}), checks={})
@@ -444,7 +443,7 @@ def test_real_reader_wiring_reports_c1_not_deployed(settings, session, auth_head
     with TestClient(app) as c:
         headers = auth_header(user_id=STAFF_USER, role="cloud_staff")
         r = c.post(RULES, json=fall_rule(), headers=headers)
-    assert (r.status_code, r.json()["error"]["details"]) == (503, {"source": "c1"})
+    assert issues(r) == {"house_id": "unknown house"}
 
 
 def test_create_defaults_skips_a_default_created_concurrently(client, staff, session, monkeypatch):

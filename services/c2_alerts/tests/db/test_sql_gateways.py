@@ -103,7 +103,14 @@ def test_batch_lookups(readers):
 
 
 def test_component_not_deployed_is_dependency_unavailable(session):
-    # No c1/c4 tables in this transaction: "relation does not exist".
+    # C1/C4 not migrated yet: drop their tables in the test's outer (rolled-back) transaction,
+    # before the session's savepoint, so the gateways' own rollbacks do not bring them back.
+    session.bind.execute(
+        text(
+            "DROP TABLE c1.rooms, c1.houses, c4.emergency_contacts, c4.house_service_settings "
+            "CASCADE"
+        )
+    )
     with pytest.raises(DependencyUnavailableError) as exc:
         C1HouseGateway(session).house(HOUSE_A1)
     assert exc.value.source == "c1"

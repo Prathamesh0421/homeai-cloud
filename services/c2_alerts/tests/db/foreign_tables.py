@@ -1,52 +1,37 @@
-"""The c4/c1 tables C2 reads (contract §4.5), created inside a test's rolled-back transaction.
+"""The c4/c1 tables C2 reads (contract §4.5), built by C1's and C4's real migrations.
 
-Real columns (C4 migration 0001, C1 plan §2.1) minus foreign keys to tables C2 never reads.
-With ``as_owners=True`` the tables are created as ``c4_app`` / ``c1_app`` and get the grants
-the owning migrations give ``c2_reader`` (C4 migration 0002; C1's migration), as in the stack.
+``migrate`` runs once per test session (``pg_engine``): it applies the revisions in
+``services/c1_iot/alembic`` and ``services/c4_dashboard/alembic`` as their owners (``c1_app``,
+``c4_app`` from ``infra/db/init.sql``), with each component's own version table, so the test
+database has exactly the tables, constraints and ``c2_reader`` grants of the stack. Their
+``env.py`` is not used (it imports that component's ``app`` package, which would clash with
+C2's); the revision files themselves only use Alembic and SQLAlchemy.
+
+``seed`` inserts the rows the gateway tests expect, inside the test's rolled-back transaction.
 """
 
 from __future__ import annotations
 
 from datetime import time
+from pathlib import Path
 
+from alembic.config import Config
+from alembic.runtime.environment import EnvironmentContext
+from alembic.script import ScriptDirectory
 from app.constants import SERVICE_CODES
 from app.gateways.types import Contact, HouseSettings
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from tests.factories import BATH, HOUSE_A1, KITCHEN, MAPLE, OAK, PINE, TENANT_A, uid
+from tests.factories import BATH, HOUSE_A1, KITCHEN, MAPLE, OAK, PINE, TENANT_A, TENANT_B, uid
 
-# STANDIN(C1-02): c1/c4 tables copied from C4 migration 0001 and the C1 plan §2.1. Once C1's
-# migration exists, build them by running the real C1 and C4 migrations and delete this DDL.
-SCHEMAS = "CREATE SCHEMA IF NOT EXISTS c4; CREATE SCHEMA IF NOT EXISTS c1;"
-C4_DDL = """
-CREATE TABLE c4.house_service_settings (
-  house_id UUID PRIMARY KEY, tenant_id UUID NOT NULL, enabled_services TEXT[] NOT NULL,
-  quiet_start TIME, quiet_end TIME, sensitivity VARCHAR(6) NOT NULL DEFAULT 'medium',
-  updated_by UUID NOT NULL, updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  CHECK ((quiet_start IS NULL) = (quiet_end IS NULL)));
-CREATE TABLE c4.emergency_contacts (
-  contact_id UUID PRIMARY KEY, house_id UUID NOT NULL, tenant_id UUID NOT NULL,
-  name VARCHAR(80) NOT NULL, email VARCHAR(254) NOT NULL, phone VARCHAR(20),
-  contact_type VARCHAR(20) NOT NULL, priority SMALLINT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (house_id, email), UNIQUE (house_id, priority));
-"""
-C1_DDL = """
-CREATE TABLE c1.houses (
-  house_id UUID PRIMARY KEY, tenant_id UUID NOT NULL, name VARCHAR(80) NOT NULL,
-  address VARCHAR(200), timezone VARCHAR(40) NOT NULL, owner_user_id UUID,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  deleted_at TIMESTAMPTZ);
-CREATE TABLE c1.rooms (
-  room_id UUID PRIMARY KEY, house_id UUID NOT NULL REFERENCES c1.houses(house_id),
-  name VARCHAR(60) NOT NULL, room_type VARCHAR(12) NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now(), UNIQUE (house_id, name));
-"""
-
-# The only grants c2_reader gets on c1/c4 (contract 02 §5.1); init.sql grants schema USAGE.
-C4_GRANTS = "GRANT SELECT ON c4.house_service_settings, c4.emergency_contacts TO c2_reader;"
-C1_GRANTS = "GRANT SELECT ON c1.houses, c1.rooms TO c2_reader;"
+SERVICES_DIR = Path(__file__).resolve().parents[3]
+# (schema, owner role, Alembic directory); C4 first, as in the stack.
+FOREIGN_MIGRATIONS = (
+    ("c4", "c4_app", SERVICES_DIR / "c4_dashboard" / "alembic"),
+    ("c1", "c1_app", SERVICES_DIR / "c1_iot" / "alembic"),
+)
 
 HOUSE_DELETED = "22222222-0000-0000-0000-0000000000dd"
 MAPLE_SETTINGS = HouseSettings(
@@ -62,23 +47,38 @@ CONTACTS = [  # inserted out of order on purpose
     Contact(uid(), "Daughter Dana", "dana@example.com", "family", 1),
     Contact(uid(), "Carer Cam", "cam@example.com", "caregiver", 2),
 ]
+TENANTS = {TENANT_A: "Acme Care (test)", TENANT_B: "Sunrise Homes (test)"}
 
 
-def create_tables(session: Session, *, as_owners: bool = False) -> None:
-    if not as_owners:
-        session.execute(text(SCHEMAS))  # init.sql creates them in the real stack
-    for owner, ddl, grants in (("c4_app", C4_DDL, C4_GRANTS), ("c1_app", C1_DDL, C1_GRANTS)):
-        if as_owners:
-            session.execute(text(f"SET LOCAL ROLE {owner}"))
-        session.execute(text(ddl))
-        if as_owners:
-            session.execute(text(grants))
-    if as_owners:
-        session.execute(text("RESET ROLE"))
+def migrate(engine: Engine) -> None:
+    """Upgrade C4's and C1's schemas to their head revision (no-op when already there)."""
+    for schema, owner, alembic_dir in FOREIGN_MIGRATIONS:
+        cfg = Config()
+        cfg.set_main_option("script_location", str(alembic_dir))
+        script = ScriptDirectory.from_config(cfg)
+
+        def upgrade(rev, _context, script=script):
+            return script._upgrade_revs("head", rev)  # what `alembic upgrade head` runs
+
+        with engine.begin() as conn:
+            if conn.execute(
+                text("SELECT 1 FROM pg_roles WHERE rolname = :r"), {"r": owner}
+            ).first():
+                conn.execute(text(f"SET LOCAL ROLE {owner}"))  # as compose and AWS migrate
+            else:  # a database without infra/db/init.sql: migrate as the superuser
+                conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+            with EnvironmentContext(cfg, script, fn=upgrade, destination_rev="head") as env:
+                env.configure(connection=conn, version_table_schema=schema)
+                with env.begin_transaction():
+                    env.run_migrations()
 
 
-def seed(session: Session, *, as_owners: bool = False) -> None:
-    create_tables(session, as_owners=as_owners)
+def seed(session: Session) -> None:
+    for tenant_id, name in TENANTS.items():  # c4.house_service_settings references c4.tenants
+        session.execute(
+            text("INSERT INTO c4.tenants (tenant_id, name, timezone) VALUES (:i, :n, 'UTC')"),
+            {"i": tenant_id, "n": name},
+        )
     for house in (MAPLE, OAK, PINE):
         session.execute(
             text(

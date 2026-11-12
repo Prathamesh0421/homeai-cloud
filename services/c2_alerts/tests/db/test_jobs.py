@@ -14,6 +14,7 @@ from app.jobs.runner import JobRunner
 from app.models.orm import Notification
 from app.services.notification_service import NotificationService
 from app.services.signed_link import KeyRing, SignedLinkService
+from sqlalchemy import text
 
 from tests.factories import (
     BATH,
@@ -22,6 +23,7 @@ from tests.factories import (
     KITCHEN,
     MAPLE,
     ROOM_A1_KITCHEN,
+    TENANT_A,
     make_alert,
     make_rule,
 )
@@ -331,23 +333,42 @@ def test_runner_sync_over_real_gateways(runner, session, notifier):
     assert runner.sync(HOUSE_A2).topics == 0  # no contacts and no topic
 
 
-# STANDIN(C1-02): relies on the test database having no c4 tables; once the real C1/C4
-# migrations build them, seed a contact there and assert a real sync result instead.
-@pytest.mark.usefixtures("pg_engine")  # skip (or fail on CI) without Postgres, like the others
-def test_default_wiring_uses_the_configured_databases():
+def test_default_wiring_uses_the_configured_databases(pg_engine):
     """JobRunner as create_app builds it: db.session_scope, the c2_reader engine, its own lock."""
     from app.gateways.notifier import LogNotifier
-    from app.gateways.types import DependencyUnavailableError
     from homeai_common import db
 
     from tests.db.conftest import DATABASE_URL
+    from tests.db.foreign_tables import CONTACTS
 
+    # The runner reads through its own connections, so this contact is committed (and removed).
+    contact = CONTACTS[0]
+    with pg_engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO c4.emergency_contacts (contact_id, house_id, tenant_id, name, email, "
+                "contact_type, priority) VALUES (:id, :h, :t, :n, :e, :ct, :p)"
+            ),
+            {
+                "id": contact.contact_id,
+                "h": HOUSE_A1,
+                "t": TENANT_A,
+                "n": contact.name,
+                "e": contact.email,
+                "ct": contact.contact_type,
+                "p": contact.priority,
+            },
+        )
     db.configure_db(DATABASE_URL, reader_url=DATABASE_URL)
     try:
         runner = JobRunner(notifier=LogNotifier(), links=LINKS)
         assert runner.retry().due == 0
-        # No c4 tables outside a test transaction: the reader reports C4 as unavailable.
-        with pytest.raises(DependencyUnavailableError, match="c4"):
-            runner.sync()
+        result = runner.sync()  # C4's real c4.emergency_contacts, read by the reader engine
+        assert (result.topics, result.subscribed, result.failed) == (1, 1, 0)
     finally:
         db.dispose_db()
+        with pg_engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM c4.emergency_contacts WHERE contact_id = :id"),
+                {"id": contact.contact_id},
+            )
