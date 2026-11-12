@@ -124,6 +124,7 @@ export default function RulesPage() {
     if (value) next.set(name, value);
     else next.delete(name);
     if (name !== "page") next.delete("page");
+    if (name === "tenant" && !houses.isError) next.delete("house"); // the houses are per tenant
     setParams(next, { replace: true });
   }
 

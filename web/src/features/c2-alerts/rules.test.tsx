@@ -200,6 +200,14 @@ describe("RulesPage", () => {
     fireEvent.change(screen.getByRole("combobox", { name: /^Tenant/ }), { target: { value: TENANTS[1].tenant_id } });
     expect(within(house).queryByRole("option", { name: "Maple St" })).not.toBeInTheDocument();
     expect(within(house).getByRole("option", { name: "Pine Rd" })).toBeInTheDocument();
+    // Maple belongs to the other tenant, so the house filter is cleared with the tenant change.
+    expect(house).toHaveValue("");
+    await waitFor(() => {
+      const lists = calls.filter((c) => c.url.startsWith("/api/v1/alert-rules?"));
+      const last = lists[lists.length - 1].url;
+      expect(last).toContain(`tenant_id=${TENANTS[1].tenant_id}`);
+      expect(last).not.toContain("house_id=");
+    });
   });
 
   it("without C1, shows ids and applies a typed house filter only for a whole id", async () => {
