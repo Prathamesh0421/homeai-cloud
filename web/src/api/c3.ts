@@ -26,17 +26,50 @@ export interface LabelMapEntry {
   rule: FrameRule;
 }
 
+export interface LabelMap {
+  version?: string | null;
+  entries: LabelMapEntry[];
+}
+
+export interface PerLabelMetrics {
+  precision: number;
+  recall: number;
+  f1: number;
+  support: number;
+}
+
+export interface EvaluationMetrics {
+  dataset: string;
+  accuracy: number;
+  macro_f1: number;
+  per_label?: Record<string, PerLabelMetrics>;
+  labels?: string[];
+  confusion?: number[][];
+  avg_latency_ms?: number;
+  p95_latency_ms?: number;
+  n_clips?: number;
+  evaluated_at: string;
+}
+
+export interface ModelEvaluation {
+  evaluation_id: string;
+  dataset: string;
+  metrics: EvaluationMetrics;
+  started_at: string;
+  finished_at: string | null;
+}
+
 export interface ModelDetail extends ModelSummary {
-  label_map: { version?: string | null; entries: LabelMapEntry[] } | Record<string, unknown>;
+  label_map: LabelMap;
   notes: string | null;
-  evaluations: Record<string, unknown>[];
+  evaluations: ModelEvaluation[];
 }
 
 export interface CreateModelRequest {
   name?: string;
   version: string;
   base_model_id?: string;
-  label_map?: { version?: string | null; entries: LabelMapEntry[] };
+  label_map?: LabelMap;
   notes?: string;
 }
 
@@ -54,15 +87,16 @@ export function createModel(body: CreateModelRequest): Promise<ModelDetail> {
 
 export function updateLabelMap(
   modelId: string,
-  entries: LabelMapEntry[],
+  labelMap: LabelMap,
 ): Promise<ModelDetail> {
-  return http.put<ModelDetail>(`/api/v1/models/${encodeURIComponent(modelId)}/label-map`, {
-    entries,
-  });
+  return http.put<ModelDetail>(
+    `/api/v1/models/${encodeURIComponent(modelId)}/label-map`,
+    labelMap,
+  );
 }
 
-export function evaluateModel(modelId: string, dataset = "eval-v1"): Promise<ModelDetail> {
-  return http.post<ModelDetail>(`/api/v1/models/${encodeURIComponent(modelId)}/evaluate`, {
+export function evaluateModel(modelId: string, dataset = "eval-v1"): Promise<EvaluationMetrics> {
+  return http.post<EvaluationMetrics>(`/api/v1/models/${encodeURIComponent(modelId)}/evaluate`, {
     dataset,
   });
 }

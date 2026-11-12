@@ -16,9 +16,11 @@ import {
   activity,
   classifyResult,
   deployment,
+  evaluationMetrics,
   integrityReport,
   model,
   modelDetail,
+  modelEvaluation,
   page,
   renderPage,
   signIn,
@@ -123,23 +125,133 @@ describe("ModelDetailPage", () => {
     return renderPage("/ops/models/m1", <ModelDetailPage />, "/ops/models/:modelId");
   }
 
-  it("shows the label map and disables Activate for the active model", async () => {
-    stubFetch({ "GET /api/v1/models/m1": { body: { data: modelDetail({ status: "active" }) } } });
+  it("renders the active model's label map read-only", async () => {
+    stubFetch({
+      "GET /api/v1/models/m1": { body: { data: modelDetail({ model_id: "m1", status: "active" }) } },
+      "GET /api/v1/models": { body: { data: [model({ model_id: "m1" })] } },
+    });
     renderDetail();
     expect(await screen.findByText("Glass break")).toBeInTheDocument(); // home label row
-    expect(screen.getByText("Glass, Shatter")).toBeInTheDocument();
+    expect(screen.getByText("Glass")).toBeInTheDocument();
+    expect(screen.getByText("Shatter")).toBeInTheDocument();
+    expect(screen.getByText(/active model's label map is read-only/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Glass break minimum confidence value")).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Save label map" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Active" })).toBeDisabled();
   });
 
-  it("activates a non-active version", async () => {
+  it("saves the complete label map, preserves metadata, then refetches with a re-evaluate hint", async () => {
+    let detailGets = 0;
     const { calls } = stubFetch({
-      "GET /api/v1/models/m1": { body: { data: modelDetail({ status: "evaluated" }) } },
-      "POST /api/v1/models/m1/activate": { body: { data: modelDetail({ status: "active" }) } },
+      "GET /api/v1/models/m1": () => {
+        detailGets += 1;
+        return { body: { data: modelDetail({ model_id: "m1", status: "evaluated" }) } };
+      },
+      "GET /api/v1/models": { body: { data: [model({ model_id: "m1", status: "evaluated" })] } },
+      "GET /api/v1/models/classes": { body: { data: { classes: ["Glass", "Shatter", "Breaking glass"] } } },
+      "PUT /api/v1/models/m1/label-map": { body: { data: modelDetail({ model_id: "m1", status: "evaluated" }) } },
+    });
+    renderDetail();
+    fireEvent.change(await screen.findByLabelText("Glass break minimum confidence value"), { target: { value: "0.65" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save label map" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Save label-map changes?");
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(calls.some((call) => call.method === "PUT")).toBe(true));
+    expect(calls.find((call) => call.method === "PUT")?.body).toEqual({
+      version: "1.0.0",
+      entries: [{
+        home_label: "glass_break",
+        category: "security",
+        source_classes: ["Glass", "Shatter"],
+        min_confidence: 0.65,
+        rule: "max",
+      }],
+    });
+    await waitFor(() => expect(detailGets).toBeGreaterThanOrEqual(2));
+    expect(await screen.findByText(/Re-evaluate this model/i)).toBeInTheDocument();
+  });
+
+  it.each([
+    [409, "model_active", "The active model cannot be changed", undefined],
+    [422, "invalid_label_map", "Invalid label map", [{ msg: "Unknown source class Nonexistent" }]],
+  ])("shows %i label-map errors inline and in a toast", async (status, code, message, details) => {
+    stubFetch({
+      "GET /api/v1/models/m1": { body: { data: modelDetail({ model_id: "m1", status: "registered" }) } },
+      "GET /api/v1/models": { body: { data: [model({ model_id: "m1", status: "registered" })] } },
+      "GET /api/v1/models/classes": { body: { data: { classes: [] } } },
+      "PUT /api/v1/models/m1/label-map": { status, body: { error: { code, message, details } } },
+    });
+    renderDetail();
+    fireEvent.change(await screen.findByLabelText("Glass break minimum confidence value"), { target: { value: "0.7" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save label map" }));
+    const expected = status === 422 ? "Unknown source class Nonexistent" : message;
+    expect((await screen.findAllByText(expected)).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uses the newest evaluation for metrics, renders its confusion matrix, and orders history newest first", async () => {
+    const older = modelEvaluation({
+      evaluation_id: "older",
+      dataset: "eval-old",
+      metrics: evaluationMetrics({ accuracy: 0.51, macro_f1: 0.5 }),
+      finished_at: "2026-06-01T12:00:00Z",
+    });
+    const latest = modelEvaluation({
+      evaluation_id: "latest",
+      dataset: "eval-latest",
+      metrics: evaluationMetrics({ accuracy: 0.95, macro_f1: 0.92 }),
+      finished_at: "2026-06-03T12:00:00Z",
+    });
+    stubFetch({
+      "GET /api/v1/models/m1": { body: { data: modelDetail({ model_id: "m1", evaluations: [older, latest] }) } },
+      "GET /api/v1/models": { body: { data: [model({ model_id: "m1" })] } },
+    });
+    renderDetail();
+    expect((await screen.findAllByText("95.0%")).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText("92.0%").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByRole("table", { name: /Per-label metrics/i })).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: /Confusion matrix/i })).toBeInTheDocument();
+    expect(screen.getByLabelText("Actual Glass break, predicted Dog bark: 2")).toBeInTheDocument();
+    const history = screen.getByRole("heading", { name: "Evaluation history" }).parentElement!;
+    const rows = within(history).getAllByRole("row");
+    expect(rows[1]).toHaveTextContent("eval-latest");
+    expect(rows[2]).toHaveTextContent("eval-old");
+  });
+
+  it("shows the metrics empty state when the model has no evaluations", async () => {
+    stubFetch({
+      "GET /api/v1/models/m1": { body: { data: modelDetail({ model_id: "m1", evaluations: [] }) } },
+      "GET /api/v1/models": { body: { data: [model({ model_id: "m1" })] } },
+    });
+    renderDetail();
+    expect(await screen.findByText("Not evaluated yet. Click Evaluate.")).toBeInTheDocument();
+  });
+
+  it("compares candidate and active metrics before activation", async () => {
+    const candidate = model({ model_id: "m1", version: "1.1.0", status: "evaluated", metrics: { accuracy: 0.93, macro_f1: 0.9 } });
+    const active = model({ model_id: "active", version: "1.0.0", status: "active", metrics: { accuracy: 0.91, macro_f1: 0.88 } });
+    const { calls } = stubFetch({
+      "GET /api/v1/models/m1": { body: { data: modelDetail(candidate) } },
+      "GET /api/v1/models": { body: { data: [candidate, active] } },
+      "GET /api/v1/models/classes": { body: { data: { classes: [] } } },
+      "POST /api/v1/models/m1/activate": { body: { data: modelDetail({ ...candidate, status: "active" }) } },
     });
     renderDetail();
     fireEvent.click(await screen.findByRole("button", { name: "Activate" }));
-    await waitFor(() => expect(calls.find((c) => c.url.endsWith("/activate"))).toBeTruthy());
+    expect(screen.getByText(/Active 1.0.0: accuracy 91.0%, macro F1 88.0%.*Candidate 1.1.0: accuracy 93.0%, macro F1 90.0%/)).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Activate" }));
+    await waitFor(() => expect(calls.find((call) => call.url.endsWith("/activate"))).toBeTruthy());
     expect(await screen.findByText("Model activated")).toBeInTheDocument();
+  });
+
+  it("labels activation of a retired model as a rollback", async () => {
+    stubFetch({
+      "GET /api/v1/models/m1": { body: { data: modelDetail({ model_id: "m1", status: "retired" }) } },
+      "GET /api/v1/models": { body: { data: [model({ model_id: "active" })] } },
+      "GET /api/v1/models/classes": { body: { data: { classes: [] } } },
+    });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Roll back to this version" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("retired version will be rolled back");
   });
 });
 
