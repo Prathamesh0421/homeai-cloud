@@ -1,5 +1,9 @@
 # 07 — Component demo on Wed 11 Nov 2026 (priority until then)
 
+> **Closed 11 Nov 2026: the component demos are done.** This file no longer sets priorities. Follow
+> `06_ROADMAP_AND_DEMO.md` (including §6, final project) and the component plans' task lists, as `AGENTS.md`
+> says. Kept as a record; the AWS notes in §5 still describe the EC2 setup.
+
 > **Added 7 Nov 2026.** The individual component demos are on **Wed 11 Nov 2026**, earlier than the week of
 > 7 Dec assumed in `06_ROADMAP_AND_DEMO.md`. This file only sets **priority and dates until the demo**. The
 > project plan itself (`06` §1–§6, the component plans, their task lists, `02_CONTRACTS.md` and `AGENTS.md`)

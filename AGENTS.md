@@ -15,8 +15,10 @@ home "camera feeds" are uploaded, classified with the pre-trained **YAMNet** aud
 | C3 | System Database Management (incl. AI inference) | Renuka Prasad Patwari | `services/c3_data` | `web/src/features/c3-data` |
 | C4 | System Dashboard (auth, RBAC, settings, dashboards, app shell) | Mohit Manoj Barade | `services/c4_dashboard` | `web/src/features/c4-dashboard` + `web/src/shared` |
 
-> **Until Wed 11 Nov 2026 (component demos):** also read `docs/07_DEMO_NOV_11.md` right after this file. It
-> sets the order and dates until the demo; everything else here and in `docs/` is unchanged.
+> **The component demos took place on Wed 11 Nov 2026.** `docs/07_DEMO_NOV_11.md` only set priorities until
+> then and no longer applies (it is kept for its record and AWS notes). Work now follows the original plan:
+> `docs/06_ROADMAP_AND_DEMO.md` (including §6, final project) and the task lists in the component plans.
+> The **final project presentation is Wed 2 Dec 2026** (see the course-dates note at the top of `06`).
 
 ## 2. Read these before writing code (in this order)
 1. `docs/01_ARCHITECTURE.md` — system shape, data ownership, the clip-to-alert flow.

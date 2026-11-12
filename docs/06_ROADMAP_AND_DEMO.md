@@ -4,6 +4,12 @@ Assumed calendar: start **Mon 2 Nov 2026**, component demos in **week 6 (from Mo
 if the course gives a different demo date; keep the order. Task IDs refer to `03_REPO_AND_INFRA.md` §10 (P0-*)
 and the component plans (C1-*, C2-*, C3-*, C4-*).
 
+> **Course dates (added 12 Nov 2026).** The component demos (M5) took place on **Wed 11 Nov 2026**
+> (`07_DEMO_NOV_11.md`). The **final project presentation is Wed 2 Dec 2026**, before the M4 freeze
+> (Thu 3 Dec) and week 5 below: finish each component's remaining tasks and the §6 items by about
+> **Sun 29 Nov** and keep 30 Nov–1 Dec for rehearsal. Order and scope are unchanged; each owner
+> adjusts their own dates in §2.
+
 ## 1. Milestones
 | Milestone | Date | Exit criteria |
 |---|---|---|
