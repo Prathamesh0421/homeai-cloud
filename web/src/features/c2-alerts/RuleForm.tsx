@@ -17,9 +17,10 @@ import {
 import type { Tenant } from "../../api/c4";
 import { ApiError } from "../../api/http";
 import { Button, Field, FormPanel, fieldErrors, SEVERITY_LABEL, useToasts } from "../../shared";
+import { UUID, houseMap, useHouses, useRooms } from "./c1Lookups";
 import { labelText } from "./format";
 
-export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export { UUID };
 const inputClass = "w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink";
 
 export interface FormState {
@@ -54,9 +55,9 @@ export function validate(f: FormState, editing: boolean): Record<string, string>
   if (!editing) {
     if (!f.alertTypeCode) errors.alert_type_code = "Choose an alert type";
     if (f.scope === "tenant_default" && !f.tenantId) errors.tenant_id = "Choose a tenant";
-    if (f.scope === "house" && !UUID.test(f.houseId.trim())) errors.house_id = "Enter the house id (UUID)";
+    if (f.scope === "house" && !UUID.test(f.houseId.trim())) errors.house_id = "Choose a house";
   }
-  if (f.roomId.trim() && !UUID.test(f.roomId.trim())) errors.room_id = "Enter a room id (UUID) or leave empty";
+  if (f.roomId.trim() && !UUID.test(f.roomId.trim())) errors.room_id = "Enter a room id (UUID) or leave it empty";
   if (f.scope === "tenant_default" && f.roomId.trim()) errors.room_id = "Only a house rule can have a room";
   if (f.labels.length === 0) errors.trigger_labels = "Pick at least one label";
   if (f.minConfidence.trim()) {
@@ -121,6 +122,19 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((cur) => ({ ...cur, [key]: value }));
+
+  // Names from C1; typed ids when C1 cannot be reached (the server checks either way).
+  const houses = useHouses();
+  const houseById = houseMap(houses.data?.data);
+  const ruleHouseId = editing ? rule.house_id : form.scope === "house" ? form.houseId.trim() : null;
+  const rooms = useRooms(ruleHouseId);
+  const tenantName = (id: string) => tenants.find((t) => t.tenant_id === id)?.name;
+  const houseLabel = (id: string) => {
+    const h = houseById.get(id);
+    if (!h) return `House ${id}`;
+    const tenant = tenants.length > 1 ? tenantName(h.tenant_id) : undefined;
+    return tenant ? `${h.name} · ${tenant}` : h.name;
+  };
 
   function chooseType(code: string) {
     const type = types.find((t) => t.code === code);
@@ -260,21 +274,39 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         </Field>
       )}
 
-      {/* STANDIN(C1 houses API): house and room are typed as ids until C1 lists houses/rooms. */}
-      {!editing && form.scope === "house" && (
+      {!editing && form.scope === "house" && houses.isError && (
         <Field label="House id" name="rule-house" error={error("house_id")}>
           <input
             id="rule-house"
             className={inputClass}
             value={form.houseId}
-            onChange={(e) => set("houseId", e.target.value)}
+            onChange={(e) => setForm((cur) => ({ ...cur, houseId: e.target.value, roomId: "" }))}
             placeholder="22222222-0000-0000-0000-0000000000a1"
           />
         </Field>
       )}
+      {!editing && form.scope === "house" && !houses.isError && (
+        <Field label="House" name="rule-house" error={error("house_id")}>
+          <select
+            id="rule-house"
+            className={inputClass}
+            value={form.houseId}
+            disabled={houses.isPending}
+            onChange={(e) => setForm((cur) => ({ ...cur, houseId: e.target.value, roomId: "" }))}
+          >
+            <option value="">{houses.isPending ? "Loading houses…" : "Choose…"}</option>
+            {houses.data?.data.map((h) => (
+              <option key={h.house_id} value={h.house_id}>
+                {houseLabel(h.house_id)}
+              </option>
+            ))}
+          </select>
+        </Field>
+      )}
       {editing && (
         <p className="text-sm text-muted">
-          {rule.scope === "house" ? `House ${rule.house_id}` : "Tenant default"} · {rule.alert_type_name}
+          {rule.scope === "house" && rule.house_id ? houseLabel(rule.house_id) : "Tenant default"} ·{" "}
+          {rule.alert_type_name}
         </p>
       )}
 
@@ -327,7 +359,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         />
       </Field>
 
-      {form.scope === "house" && (
+      {form.scope === "house" && (houses.isError || rooms.isError) && (
         <Field label="Room id (optional: only this room)" name="rule-room" error={error("room_id")}>
           <input
             id="rule-room"
@@ -336,6 +368,28 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
             onChange={(e) => set("roomId", e.target.value)}
             placeholder="Whole house"
           />
+        </Field>
+      )}
+      {form.scope === "house" && !houses.isError && !rooms.isError && (
+        <Field label="Room (optional: only this room)" name="rule-room" error={error("room_id")}>
+          <select
+            id="rule-room"
+            className={inputClass}
+            value={form.roomId}
+            disabled={!rooms.isSuccess}
+            onChange={(e) => set("roomId", e.target.value)}
+          >
+            <option value="">{rooms.isFetching ? "Loading rooms…" : "Whole house"}</option>
+            {rooms.data?.map((r) => (
+              <option key={r.room_id} value={r.room_id}>
+                {r.name}
+              </option>
+            ))}
+            {/* A room C1 no longer lists (deleted) stays visible so the rule is not changed silently. */}
+            {form.roomId && rooms.isSuccess && !rooms.data.some((r) => r.room_id === form.roomId) && (
+              <option value={form.roomId}>Room …{form.roomId.slice(-4)} (not in C1)</option>
+            )}
+          </select>
         </Field>
       )}
 

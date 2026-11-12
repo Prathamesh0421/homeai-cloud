@@ -17,6 +17,8 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from tests.db import foreign_tables
+
 SERVICE_DIR = Path(__file__).resolve().parents[2]
 # Tests connect as the Postgres superuser (to drop and rebuild schema c2); the role grants
 # from infra/db/init.sql are checked with SET ROLE in test_reader_grants.py.
@@ -49,6 +51,8 @@ def pg_engine() -> Iterator[Engine]:
     with engine.begin() as conn:
         cfg.attributes["connection"] = conn
         command.upgrade(cfg, "head")
+    # The c4/c1 tables C2 reads, from C4's and C1's own migrations (kept between runs).
+    foreign_tables.migrate(engine)
     yield engine
     engine.dispose()
 

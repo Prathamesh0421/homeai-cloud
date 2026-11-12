@@ -1,9 +1,9 @@
 """``c2_reader``'s Postgres privileges as ``infra/db/init.sql`` grants them (contract §4.5, §5.1).
 
-The c4/c1 tables are created as their owners (``c4_app``, ``c1_app``) with the grants their
-migrations give (C4 0002 is tested against the real migration in C4's suite), then the test
-switches to ``c2_reader`` with ``SET LOCAL ROLE``, so every statement after that is checked
-against that role's privileges. All inside the test's rolled-back transaction.
+The c4/c1 tables come from C4's and C1's real migrations, run as their owners (``c4_app``,
+``c1_app``) with the grants those migrations give (``tests/db/foreign_tables.py``). The test
+seeds them, then switches to ``c2_reader`` with ``SET LOCAL ROLE``, so every statement after that
+is checked against that role's privileges. All inside the test's rolled-back transaction.
 """
 
 from __future__ import annotations
@@ -43,13 +43,13 @@ def denied(session: Session, sql: str) -> None:
 
 @pytest.fixture
 def owned(session) -> Session:
-    """The §4.5 tables, created by their owner roles and seeded."""
+    """The §4.5 tables (created by their owners' migrations), seeded."""
     found = session.execute(
         text("SELECT rolname FROM pg_roles WHERE rolname = ANY(:r)"), {"r": list(ROLES)}
     ).scalars()
     if missing := sorted(set(ROLES) - set(found)):
         _unavailable(f"roles {missing} missing: run infra/db/init.sql on the test database")
-    seed(session, as_owners=True)
+    seed(session)
     return session
 
 
@@ -94,6 +94,21 @@ def test_reader_cannot_create_tables(reader, schema):
 )
 def test_reader_has_no_access_to_other_schemas(reader, sql):
     # C2's own tables are written through c2_app; the reader connection never touches them.
+    denied(reader, sql)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT password_hash FROM c4.users",
+        "SELECT 1 FROM c4.tenants",
+        "SELECT 1 FROM c4.service_clients",
+        "SELECT 1 FROM c1.camera_feeds",
+        "SELECT 1 FROM c1.feed_config_versions",
+    ],
+)
+def test_reader_cannot_read_the_other_real_c1_c4_tables(reader, sql):
+    # Only the four §4.5 tables are granted (C4 0002, C1 0001); the rest of c4/c1 is not.
     denied(reader, sql)
 
 
