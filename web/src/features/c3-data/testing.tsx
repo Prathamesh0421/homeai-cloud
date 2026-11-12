@@ -10,8 +10,10 @@ import { ToastProvider, ToastViewport } from "../../shared/Toasts";
 import type {
   ActivityPattern,
   DeploymentStatus,
+  EvaluationMetrics,
   IntegrityReport,
   ModelDetail,
+  ModelEvaluation,
   ModelSummary,
   TestClassifyResult,
 } from "../../api/c3";
@@ -117,6 +119,36 @@ export function modelDetail(overrides: Partial<ModelDetail> = {}): ModelDetail {
     },
     notes: "bundled baseline",
     evaluations: [],
+    ...overrides,
+  };
+}
+
+export function evaluationMetrics(overrides: Partial<EvaluationMetrics> = {}): EvaluationMetrics {
+  return {
+    dataset: "eval-v1",
+    accuracy: 0.91,
+    macro_f1: 0.88,
+    per_label: {
+      glass_break: { precision: 0.9, recall: 0.8, f1: 0.85, support: 12 },
+      dog_bark: { precision: 0.75, recall: 1, f1: 0.86, support: 4 },
+    },
+    labels: ["glass_break", "dog_bark"],
+    confusion: [[10, 2], [0, 4]],
+    avg_latency_ms: 110,
+    p95_latency_ms: 175,
+    n_clips: 16,
+    evaluated_at: "2026-06-02T12:00:00Z",
+    ...overrides,
+  };
+}
+
+export function modelEvaluation(overrides: Partial<ModelEvaluation> = {}): ModelEvaluation {
+  return {
+    evaluation_id: "e0000000-0000-4000-8000-000000000001",
+    dataset: "eval-v1",
+    metrics: evaluationMetrics(),
+    started_at: "2026-06-02T11:59:00Z",
+    finished_at: "2026-06-02T12:00:00Z",
     ...overrides,
   };
 }
