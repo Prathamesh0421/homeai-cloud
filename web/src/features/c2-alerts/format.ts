@@ -65,6 +65,7 @@ export function deliveryStatus(n: AlertNotification): { text: string; tone: Deli
   if (n.status === "queued") return { text: "Sending…", tone: "pending" };
   if (n.last_error === "alert_closed") return { text: "Stopped: alert closed", tone: "failed" };
   if (n.last_error === "contact_removed") return { text: "Stopped: contact removed", tone: "failed" };
+  if (n.last_error === "contact_unsubscribed") return { text: "Not sent: contact unsubscribed", tone: "failed" };
   const triesLeft = n.attempt_count < MAX_EMAIL_ATTEMPTS;
   if (n.last_error === "subscription_pending") {
     return triesLeft

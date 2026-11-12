@@ -29,6 +29,7 @@ MAX_ATTEMPTS = 3
 # Wait after attempt n (1-based) before the next try; no wait after the last attempt.
 BACKOFF = (timedelta(minutes=1), timedelta(minutes=2), timedelta(minutes=4))
 SUBSCRIPTION_PENDING = "subscription_pending"
+CONTACT_UNSUBSCRIBED = "contact_unsubscribed"  # final: no retries (they opted out)
 
 
 def next_attempt_at(attempt_count: int, now: datetime) -> datetime | None:
@@ -100,6 +101,8 @@ class NotificationService:
             subscription = self.notifier.ensure_subscription(
                 topic, contact.email, contact.contact_id
             )
+            if subscription.unsubscribed:
+                return self.record_failure(row, CONTACT_UNSUBSCRIBED, final=True)
             if not subscription.confirmed:
                 return self.record_failure(row, SUBSCRIPTION_PENDING)
             token = self.links.issue(alert.alert_id, contact.contact_id, alert.triggered_at)
@@ -134,12 +137,13 @@ class NotificationService:
         )
         return row
 
-    def record_failure(self, row: Notification, error: str) -> Notification:
-        """Count a failed attempt on ``row`` and schedule the next one (none after the last)."""
+    def record_failure(self, row: Notification, error: str, *, final: bool = False) -> Notification:
+        """Count a failed attempt on ``row`` and schedule the next one (none after the last,
+        or when ``final``)."""
         row.status = "failed"
         row.attempt_count += 1
         row.last_error = error[:500]
-        row.next_attempt_at = next_attempt_at(row.attempt_count, self.clock())
+        row.next_attempt_at = None if final else next_attempt_at(row.attempt_count, self.clock())
         self.session.commit()
         logger.warning(
             "alert email not sent",

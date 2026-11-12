@@ -75,6 +75,7 @@ function short(id: string): string {
 
 export function syncSummary(r: SyncResult): string {
   const parts = [`${r.subscribed} subscribed`, `${r.pending} waiting for email confirmation`];
+  if (r.unsubscribed) parts.push(`${r.unsubscribed} unsubscribed (used the link in an email)`);
   if (r.removed) parts.push(`${r.removed} removed`);
   if (r.failed) parts.push(`${r.failed} house(s) failed, retried in 5 min`);
   return `${r.topics} house topic(s): ${parts.join(", ")}`;

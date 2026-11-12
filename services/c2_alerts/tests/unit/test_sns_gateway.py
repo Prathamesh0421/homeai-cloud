@@ -91,6 +91,20 @@ def test_pending_subscription_is_not_resubscribed(sns):
     assert gw.ensure_subscription(TOPIC, "dana@example.com", CONTACT).confirmed is False
 
 
+def test_unsubscribed_contact_is_reported_and_not_resubscribed(sns):
+    # After the contact clicks "unsubscribe" in an SNS email, AWS lists the subscription with
+    # the ARN "Deleted" until it removes it. It has no attributes to read (InvalidParameter on
+    # AWS), and subscribing again would email someone who just opted out.
+    gw, stub = sns
+    stub.add_response(
+        "list_subscriptions_by_topic",
+        {"Subscriptions": [sub(arn="Deleted")]},
+        {"TopicArn": TOPIC},
+    )
+    s = gw.ensure_subscription(TOPIC, "dana@example.com", CONTACT)
+    assert (s.confirmed, s.unsubscribed, s.arn) == (False, True, None)
+
+
 def test_confirmed_subscription_found_across_pages_case_insensitive(sns):
     gw, stub = sns
     stub.add_response(
@@ -231,6 +245,7 @@ def test_email_subscriptions_hide_the_pending_placeholder_arn(sns):
             "Subscriptions": [
                 sub("dana@example.com"),
                 sub("cam@example.com", arn="PendingConfirmation"),
+                sub("ned@example.com", arn="Deleted"),
                 sub("+15550100", protocol="sms"),
             ]
         },
@@ -240,6 +255,7 @@ def test_email_subscriptions_hide_the_pending_placeholder_arn(sns):
     assert [(s.email, s.arn) for s in subs] == [
         ("dana@example.com", SUB),
         ("cam@example.com", None),
+        ("ned@example.com", None),
     ]
 
 

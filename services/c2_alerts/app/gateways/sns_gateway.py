@@ -22,6 +22,7 @@ from app.services.email_render import EmailMessage
 logger = logging.getLogger(__name__)
 
 PENDING = "PendingConfirmation"
+DELETED = "Deleted"  # listed after the contact used the unsubscribe link, until AWS removes it
 
 
 def filter_policy(contact_id: str) -> str:
@@ -140,6 +141,8 @@ class SnsGateway:
         for sub in subs:
             if sub.get("Endpoint", "").lower() == email.lower():
                 arn = sub.get("SubscriptionArn", "")
+                if arn == DELETED:  # no attributes to read; do not email them again
+                    return Subscription(contact_id, email, confirmed=False, unsubscribed=True)
                 if not arn or arn == PENDING:
                     return Subscription(contact_id, email, confirmed=False)
                 return self._state(arn, email, contact_id)

@@ -64,6 +64,10 @@ describe("format", () => {
       "Failed after 3 tries",
     );
     expect(deliveryStatus({ ...base, last_error: "alert_closed" }).text).toBe("Stopped: alert closed");
+    expect(deliveryStatus({ ...base, last_error: "contact_unsubscribed" })).toEqual({
+      text: "Not sent: contact unsubscribed",
+      tone: "failed",
+    });
     expect(deliveryStatus({ ...base, last_error: "contact_removed" }).text).toBe("Stopped: contact removed");
   });
 

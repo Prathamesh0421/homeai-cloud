@@ -97,6 +97,7 @@ class FakeNotifier:
         self._subscription = Subscription
         self._topic_subscription = TopicSubscription
         self.pending: set[str] = set()  # emails whose subscription is not confirmed yet
+        self.opted_out: set[str] = set()  # emails that used SNS's unsubscribe link
         self.fail_publish: set[str] = set()  # contact ids whose publish raises
         self.fail_topic = False
         self.fail_houses: set[str] = set()  # houses whose topic calls raise
@@ -113,6 +114,9 @@ class FakeNotifier:
         return topic
 
     def ensure_subscription(self, topic: str, email: str, contact_id: str):
+        if email.lower() in {e.lower() for e in self.opted_out}:  # SNS lists it as "Deleted"
+            self.subscribed.setdefault(topic, {})[email.lower()] = None
+            return self._subscription(contact_id, email, confirmed=False, unsubscribed=True)
         confirmed = email not in self.pending
         subs = self.subscribed.setdefault(topic, {})
         arn = f"{topic}:{contact_id}"

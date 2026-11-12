@@ -23,6 +23,7 @@ class SyncResult:
     topics: int = 0  # houses whose topic was synced
     subscribed: int = 0  # contacts with a confirmed subscription
     pending: int = 0  # contacts waiting for them to confirm the SNS email
+    unsubscribed: int = 0  # contacts who used the unsubscribe link in an SNS email
     removed: int = 0  # subscriptions of former contacts that were unsubscribed
     failed: int = 0  # houses skipped because SNS failed (tried again next run)
 
@@ -65,7 +66,13 @@ class SubscriptionSync:
 
         for contact in contacts:
             sub = self.notifier.ensure_subscription(topic, contact.email, contact.contact_id)
-            if sub.confirmed:
+            if sub.unsubscribed:
+                result.unsubscribed += 1
+                logger.info(
+                    "contact unsubscribed from alert emails",
+                    extra={"house_id": house_id, "recipient": describe(contact.email)},
+                )
+            elif sub.confirmed:
                 result.subscribed += 1
             else:
                 result.pending += 1
@@ -80,7 +87,7 @@ class SubscriptionSync:
                 continue
             if sub.arn is None:
                 logger.info(
-                    "former contact's subscription still pending; SNS removes it",
+                    "former contact's subscription pending or unsubscribed; SNS removes it",
                     extra={"house_id": house_id, "recipient": describe(sub.email)},
                 )
                 continue

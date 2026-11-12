@@ -31,6 +31,11 @@ class Subscription:
     email: str
     confirmed: bool  # False while SNS waits for the contact to click the confirmation email
     arn: str | None = None
+    # The contact clicked "unsubscribe" in an SNS email (AWS lists the subscription as
+    # "Deleted" until it removes it). Not resubscribed while listed: that would email someone
+    # who just opted out. Once AWS has removed it, the next sync subscribes the address again
+    # (one confirmation email).
+    unsubscribed: bool = False
 
 
 @dataclass(frozen=True)
@@ -38,8 +43,8 @@ class TopicSubscription:
     """An email subscription found on a topic (ContactSubscriptionSync)."""
 
     email: str
-    # None while pending on AWS (listed as "PendingConfirmation"): it cannot be unsubscribed,
-    # and SNS deletes an unconfirmed subscription after three days on its own.
+    # None while pending on AWS (listed as "PendingConfirmation") or after the contact
+    # unsubscribed ("Deleted"): it cannot be unsubscribed, and SNS removes it on its own.
     arn: str | None
 
 
