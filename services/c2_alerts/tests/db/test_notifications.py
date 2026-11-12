@@ -166,6 +166,15 @@ def test_pending_subscription_is_failed_with_retry_in_a_minute(session, service,
     assert [r.status for r in rows] == ["sent", "failed", "sent"]  # others still notified
 
 
+def test_unsubscribed_contact_is_stopped_without_retries(session, service, notifier):
+    notifier.opted_out.add("cam@example.com")
+    rows = emails(service.notify(alert_with(session, "critical")))
+    cam = rows[1]
+    assert (cam.status, cam.last_error, cam.attempt_count) == ("failed", "contact_unsubscribed", 1)
+    assert cam.next_attempt_at is None  # the retry job leaves it alone
+    assert [r.status for r in rows] == ["sent", "failed", "sent"]  # others still notified
+
+
 def test_publish_error_is_failed_with_retry(session, service, notifier):
     notifier.fail_publish.add(DANA.contact_id)
     dana = emails(service.notify(alert_with(session, "high")))[0]

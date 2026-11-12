@@ -143,6 +143,19 @@ def test_batch_size_is_capped(session, service, alert):
 # --- outcomes -------------------------------------------------------------------------------
 
 
+def test_contact_who_unsubscribed_meanwhile_is_stopped(session, service, notifier, alert):
+    notifier.opted_out.add(DANA.email)
+    row = email_row(session, alert)
+    result = run(service)
+    assert result.failed == 1
+    assert (row.attempt_count, row.last_error, row.next_attempt_at) == (
+        2,
+        "contact_unsubscribed",
+        None,
+    )
+    assert run(service).due == 0
+
+
 def test_still_pending_backs_off_then_gives_up(session, service, notifier, alert):
     notifier.pending.add(DANA.email)
     row = email_row(session, alert)

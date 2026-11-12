@@ -48,7 +48,14 @@ def test_sync_all_houses(client, staff, jobs):
     r = client.post(SYNC, headers=staff)
     assert r.status_code == 200
     assert r.json() == {
-        "data": {"topics": 2, "subscribed": 3, "pending": 1, "removed": 1, "failed": 0}
+        "data": {
+            "topics": 2,
+            "subscribed": 3,
+            "pending": 1,
+            "unsubscribed": 0,
+            "removed": 1,
+            "failed": 0,
+        }
     }
     assert jobs.calls == [None]
 

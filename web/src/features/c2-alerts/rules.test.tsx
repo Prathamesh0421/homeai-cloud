@@ -114,11 +114,14 @@ describe("rule helpers", () => {
   });
 
   it("summarises a sync", () => {
-    expect(syncSummary({ topics: 2, subscribed: 3, pending: 1, removed: 0, failed: 0 })).toBe(
+    expect(syncSummary({ topics: 2, subscribed: 3, pending: 1, unsubscribed: 0, removed: 0, failed: 0 })).toBe(
       "2 house topic(s): 3 subscribed, 1 waiting for email confirmation",
     );
-    expect(syncSummary({ topics: 1, subscribed: 0, pending: 0, removed: 2, failed: 1 })).toContain(
+    expect(syncSummary({ topics: 1, subscribed: 0, pending: 0, unsubscribed: 0, removed: 2, failed: 1 })).toContain(
       "2 removed, 1 house(s) failed",
+    );
+    expect(syncSummary({ topics: 1, subscribed: 1, pending: 0, unsubscribed: 2, removed: 0, failed: 0 })).toBe(
+      "1 house topic(s): 1 subscribed, 0 waiting for email confirmation, 2 unsubscribed (used the link in an email)",
     );
   });
 

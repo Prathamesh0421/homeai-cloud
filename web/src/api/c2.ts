@@ -214,6 +214,8 @@ export interface SyncResult {
   topics: number;
   subscribed: number;
   pending: number;
+  /** Contacts who used the unsubscribe link in an alert email (not emailed again). */
+  unsubscribed: number;
   removed: number;
   failed: number;
 }

@@ -115,5 +115,6 @@ class SyncResultOut(BaseModel):
     topics: int
     subscribed: int
     pending: int
+    unsubscribed: int = Field(description="contacts who used the unsubscribe link in an email")
     removed: int
     failed: int = Field(description="houses skipped because SNS failed; retried on the next run")

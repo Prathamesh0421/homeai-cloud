@@ -49,6 +49,15 @@ def test_pending_confirmations_are_counted(contacts, notifier, caplog):
     assert "ned@example.com" not in caplog.text  # emails are masked in logs
 
 
+def test_unsubscribed_contacts_are_counted_and_the_house_still_syncs(contacts, notifier, caplog):
+    notifier.opted_out.add(CAM.email)
+    with caplog.at_level(logging.INFO):
+        result = sync(contacts, notifier)
+    assert (result.subscribed, result.pending, result.unsubscribed, result.failed) == (2, 0, 1, 0)
+    assert "contact unsubscribed" in caplog.text
+    assert "cam@example.com" not in caplog.text.lower()  # emails are masked in logs
+
+
 def test_former_contacts_are_unsubscribed(contacts, notifier):
     sync(contacts, notifier)
     contacts._contacts[HOUSE_A1] = [CAM]  # Dana removed in C4
