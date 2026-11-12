@@ -138,14 +138,19 @@ class SnsGateway:
         ``PendingConfirmation``, LocalStack lists them with a real ARN.
         """
         subs = [s for s in self.subscriptions(topic) if s.get("Protocol") == "email"]
-        for sub in subs:
-            if sub.get("Endpoint", "").lower() == email.lower():
-                arn = sub.get("SubscriptionArn", "")
-                if arn == DELETED:  # no attributes to read; do not email them again
-                    return Subscription(contact_id, email, confirmed=False, unsubscribed=True)
-                if not arn or arn == PENDING:
-                    return Subscription(contact_id, email, confirmed=False)
-                return self._state(arn, email, contact_id)
+        # An address can be listed twice, e.g. re-subscribed while AWS still lists the
+        # "Deleted" entry: a live subscription wins over a pending one, which wins over Deleted.
+        arns = [
+            s.get("SubscriptionArn", "")
+            for s in subs
+            if s.get("Endpoint", "").lower() == email.lower()
+        ]
+        if live := [a for a in arns if a.startswith("arn:")]:
+            return self._state(live[0], email, contact_id)
+        if any(a != DELETED for a in arns):  # "PendingConfirmation" (or no ARN)
+            return Subscription(contact_id, email, confirmed=False)
+        if arns:  # only "Deleted": no attributes to read; do not email them again
+            return Subscription(contact_id, email, confirmed=False, unsubscribed=True)
         # A new address for this contact: the old address's subscription carries the same
         # filter policy, so it would get this contact's emails (and signed links) too.
         self._drop_previous_addresses(subs, contact_id)

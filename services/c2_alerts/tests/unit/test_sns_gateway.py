@@ -105,6 +105,34 @@ def test_unsubscribed_contact_is_reported_and_not_resubscribed(sns):
     assert (s.confirmed, s.unsubscribed, s.arn) == (False, True, None)
 
 
+@pytest.mark.parametrize(
+    ("other", "expected"),
+    [("PendingConfirmation", (False, False)), (SUB, (True, False))],
+    ids=["pending", "confirmed"],
+)
+def test_a_new_subscription_wins_over_a_deleted_one(sns, other, expected):
+    # Re-subscribed (e.g. in the console) while AWS still lists the "Deleted" entry first.
+    gw, stub = sns
+    stub.add_response(
+        "list_subscriptions_by_topic",
+        {"Subscriptions": [sub(arn="Deleted"), sub("Dana@Example.com", arn=other)]},
+        {"TopicArn": TOPIC},
+    )
+    if other == SUB:
+        stub.add_response(
+            "get_subscription_attributes",
+            {
+                "Attributes": {
+                    "PendingConfirmation": "false",
+                    "FilterPolicy": filter_policy(CONTACT),
+                }
+            },
+            {"SubscriptionArn": SUB},
+        )
+    s = gw.ensure_subscription(TOPIC, "dana@example.com", CONTACT)
+    assert (s.confirmed, s.unsubscribed) == expected
+
+
 def test_confirmed_subscription_found_across_pages_case_insensitive(sns):
     gw, stub = sns
     stub.add_response(
