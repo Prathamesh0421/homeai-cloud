@@ -119,9 +119,14 @@ def held_detection(stack) -> tuple[dict, str]:
     pytest.fail(f"YAMNet recognised none of {[c for c, *_ in HELD_CLIPS]}")
 
 
-def resend(stack, detection: dict) -> dict:
+def resend(stack, detection: dict, raised: list[str]) -> dict:
+    """Evaluates the stored detection again; any alert in the answer is recorded in ``raised``
+    first, so the fixture resolves it even if a later assertion fails."""
     r = stack.evaluate(detection)
+    assert r.status_code in (200, 201), r.text
     body = r.json()["data"]
+    if body.get("alert_id") and body["alert_id"] not in raised:
+        raised.append(body["alert_id"])
     created = body["decision"] == "alert" and not body["duplicate"]
     assert r.status_code == (201 if created else 200), r.text  # 201 = new alert raised
     return body
@@ -134,23 +139,26 @@ def maple(stack):
     order = contacts(stack)
     raised: list[str] = []
     put_settings(stack)
-    yield raised
-    for alert_id in raised:
-        if alert(stack, alert_id)["status"] in ("open", "acknowledged"):
-            close(stack, alert_id)
-    reorder(stack, order)
-    quiet = (before["quiet_start"], before["quiet_end"]) if before["quiet_start"] else None
-    stack.call(
-        "PUT",
-        f"/api/v1/houses/{MAPLE}/settings",
-        stack.user_token(OWNER),
-        json={
-            "enabled_services": before["enabled_services"],
-            "quiet_start": quiet[0] if quiet else None,
-            "quiet_end": quiet[1] if quiet else None,
-            "sensitivity": before["sensitivity"],
-        },
-    )
+    try:
+        yield raised
+    finally:
+        # Settings and contacts first: the shared stack must not stay in test state even if
+        # resolving an alert fails.
+        stack.call(
+            "PUT",
+            f"/api/v1/houses/{MAPLE}/settings",
+            stack.user_token(OWNER),
+            json={
+                "enabled_services": before["enabled_services"],
+                "quiet_start": before["quiet_start"],
+                "quiet_end": before["quiet_end"],
+                "sensitivity": before["sensitivity"],
+            },
+        )
+        reorder(stack, order)
+        for alert_id in raised:
+            if alert(stack, alert_id)["status"] in ("open", "acknowledged"):
+                close(stack, alert_id)
 
 
 def test_i2_detection_raises_exactly_one_alert(stack, maple):
@@ -158,9 +166,8 @@ def test_i2_detection_raises_exactly_one_alert(stack, maple):
     assert detection["top_confidence"] >= threshold(stack, "intrusion", "medium"), detection
 
     # C3's handoff already raised it: evaluating the same detection again is a duplicate.
-    again = resend(stack, detection)
+    again = resend(stack, detection, maple)
     assert again["decision"] == "alert" and again["duplicate"] is True, again
-    maple.append(again["alert_id"])
     got = alert(stack, again["alert_id"])
     assert (got["alert_type_code"], got["severity"], got["status"]) == ("intrusion", "high", "open")
     assert (got["detection_id"], got["media_id"]) == (detection["id"], detection["media_id"])
@@ -168,7 +175,7 @@ def test_i2_detection_raises_exactly_one_alert(stack, maple):
 
     # Exactly one alert for this detection: C2 keys alerts on detection_id, so any number of
     # resends keep answering with the same alert.
-    assert resend(stack, detection)["alert_id"] == again["alert_id"]
+    assert resend(stack, detection, maple)["alert_id"] == again["alert_id"]
 
 
 def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
@@ -181,16 +188,15 @@ def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
     # threshold anyway.
     quiet, alert_type = held_detection(stack)
     medium = threshold(stack, alert_type, "medium")
-    held = resend(stack, quiet)
+    held = resend(stack, quiet, maple)
     expected = "quiet_hours" if quiet["top_confidence"] >= medium else "below_threshold"
     assert (held["decision"], held["reason"]) == ("no_alert", expected), (quiet, held)
 
     # Glass break (intrusion, high) goes through quiet hours.
     glass = detect(stack, "glass_break.wav", "glass_break")
     assert glass["top_confidence"] >= threshold(stack, "intrusion", "medium"), glass
-    raised = resend(stack, glass)
+    raised = resend(stack, glass, maple)
     assert raised["decision"] == "alert" and raised["duplicate"] is True, raised
-    maple.append(raised["alert_id"])
     got = alert(stack, raised["alert_id"])
     assert got["severity"] == "high"
     emails = sorted(
@@ -201,7 +207,7 @@ def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
     # Outside quiet hours with sensitivity high (threshold -0.10) the same sound is re-judged.
     put_settings(stack, sensitivity="high")
     high = threshold(stack, alert_type, "high")
-    rejudged = resend(stack, quiet)
+    rejudged = resend(stack, quiet, maple)
     print(
         f"{alert_type} thresholds: medium {medium}, high {high}; sensitivity decides it: "
         f"{high <= quiet['top_confidence'] < medium}"
@@ -209,6 +215,5 @@ def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
     if quiet["top_confidence"] >= high:
         assert (rejudged["decision"], rejudged["severity"]) == ("alert", "low"), rejudged
         assert rejudged["duplicate"] is False
-        maple.append(rejudged["alert_id"])
     else:
         assert (rejudged["decision"], rejudged["reason"]) == ("no_alert", "below_threshold")
