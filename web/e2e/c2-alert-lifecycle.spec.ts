@@ -91,7 +91,7 @@ test("ops creates a room rule; the same rule again is a duplicate (409)", async 
     await signIn(page, OPS);
     await page.goto("/ops/alert-rules");
 
-    for (const expected of ["Rule created", "an identical rule already exists"]) {
+    for (const expected of ["Rule created", "an enabled rule already exists for this tenant, house, alert type and room"]) {
       await page.getByRole("button", { name: "New rule" }).click();
       const form = page.locator("form").filter({ hasText: "New alert rule" });
       const house = form.getByLabel("House", { exact: true });
