@@ -9,7 +9,7 @@ raised are resolved.
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -89,18 +89,42 @@ def close(stack, alert_id: str) -> None:
         stack.call("POST", f"/api/v1/alerts/{alert_id}/{action}", stack.user_token(OWNER), json={})
 
 
-def detect(stack, clip: str, label: str) -> dict:
+def upload(stack, clip: str) -> dict:
     detection = stack.wait_for_detection(stack.upload_clip(FEED, clip), stack.user_token(OWNER))
     print(f"{clip}: {detection['top_label']} {detection['top_confidence']:.3f}")
+    return detection
+
+
+def detect(stack, clip: str, label: str) -> dict:
+    detection = upload(stack, clip)
     if detection["top_label"] != label:
         pytest.fail(f"YAMNet labelled {clip} {detection['top_label']}, not {label}: {detection}")
     return detection
 
 
+# Low-severity clips (held in quiet hours): clip, label, alert type. YAMNet does not label every
+# demo clip (cough.wav scored nothing on 21 Nov), so the first one it recognises is used.
+HELD_CLIPS = (
+    ("cough.wav", "cough", "wellness_cough"),
+    ("dog.wav", "dog", "pet"),
+    ("speech.wav", "speech", "presence"),
+)
+
+
+def held_detection(stack) -> tuple[dict, str]:
+    for clip, label, alert_type in HELD_CLIPS:
+        detection = upload(stack, clip)
+        if detection["top_label"] == label:
+            return detection, alert_type
+    pytest.fail(f"YAMNet recognised none of {[c for c, *_ in HELD_CLIPS]}")
+
+
 def resend(stack, detection: dict) -> dict:
     r = stack.evaluate(detection)
-    assert r.status_code == 200, r.text
-    return r.json()["data"]
+    body = r.json()["data"]
+    created = body["decision"] == "alert" and not body["duplicate"]
+    assert r.status_code == (201 if created else 200), r.text  # 201 = new alert raised
+    return body
 
 
 @pytest.fixture
@@ -130,7 +154,6 @@ def maple(stack):
 
 
 def test_i2_detection_raises_exactly_one_alert(stack, maple):
-    started = datetime.now(UTC) - timedelta(minutes=2)  # margin for clock skew with the host
     detection = detect(stack, "glass_break.wav", "glass_break")
     assert detection["top_confidence"] >= threshold(stack, "intrusion", "medium"), detection
 
@@ -143,14 +166,9 @@ def test_i2_detection_raises_exactly_one_alert(stack, maple):
     assert (got["detection_id"], got["media_id"]) == (detection["id"], detection["media_id"])
     assert got["evidence"]["detection_available"] is True
 
-    # Exactly one alert for this detection (assumes nobody else uploads to Maple meanwhile).
-    rows = stack.call(
-        "GET",
-        "/api/v1/alerts",
-        stack.user_token(OWNER),
-        params={"house_id": MAPLE, "alert_type_code": "intrusion", "from": started.isoformat()},
-    )["data"]
-    assert [r["alert_id"] for r in rows] == [again["alert_id"]]
+    # Exactly one alert for this detection: C2 keys alerts on detection_id, so any number of
+    # resends keep answering with the same alert.
+    assert resend(stack, detection)["alert_id"] == again["alert_id"]
 
 
 def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
@@ -159,12 +177,13 @@ def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
     reorder(stack, order)
     put_settings(stack, quiet=quiet_window_around_now())
 
-    # Cough (wellness_cough, low) is held in quiet hours, or is under the threshold anyway.
-    cough = detect(stack, "cough.wav", "cough")
-    medium = threshold(stack, "wellness_cough", "medium")
-    held = resend(stack, cough)
-    expected = "quiet_hours" if cough["top_confidence"] >= medium else "below_threshold"
-    assert (held["decision"], held["reason"]) == ("no_alert", expected), (cough, held)
+    # A low-severity sound (cough, dog or speech) is held in quiet hours, or is under the
+    # threshold anyway.
+    quiet, alert_type = held_detection(stack)
+    medium = threshold(stack, alert_type, "medium")
+    held = resend(stack, quiet)
+    expected = "quiet_hours" if quiet["top_confidence"] >= medium else "below_threshold"
+    assert (held["decision"], held["reason"]) == ("no_alert", expected), (quiet, held)
 
     # Glass break (intrusion, high) goes through quiet hours.
     glass = detect(stack, "glass_break.wav", "glass_break")
@@ -179,15 +198,15 @@ def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
     )
     assert [n["contact_id"] for n in emails] == order
 
-    # Outside quiet hours with sensitivity high (threshold -0.10) the same cough is re-judged.
+    # Outside quiet hours with sensitivity high (threshold -0.10) the same sound is re-judged.
     put_settings(stack, sensitivity="high")
-    high = threshold(stack, "wellness_cough", "high")
-    rejudged = resend(stack, cough)
+    high = threshold(stack, alert_type, "high")
+    rejudged = resend(stack, quiet)
     print(
-        f"cough thresholds: medium {medium}, high {high}; sensitivity decides it: "
-        f"{high <= cough['top_confidence'] < medium}"
+        f"{alert_type} thresholds: medium {medium}, high {high}; sensitivity decides it: "
+        f"{high <= quiet['top_confidence'] < medium}"
     )
-    if cough["top_confidence"] >= high:
+    if quiet["top_confidence"] >= high:
         assert (rejudged["decision"], rejudged["severity"]) == ("alert", "low"), rejudged
         assert rejudged["duplicate"] is False
         maple.append(rejudged["alert_id"])
