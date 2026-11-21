@@ -1,4 +1,4 @@
-.PHONY: help lint lint-py lint-web test test-common web migrate seed token test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim demo-c1-reset deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run backup-run test-c2-full test-c1-full
+.PHONY: help lint lint-py lint-web test test-common web migrate seed token test-c3-int seed-c4 seed-c2 seed-c1 seed-c1-docker demo-c1-sim demo-c1-reset deploy deploy-env deploy-down deploy-logs demo-c2-detect demo-c2-expired-link demo-c2-quiet-hours demo-c2-reset baseline-run integrity-run backup-run test-c2-full test-c1-full test-integration
 
 PYTHON ?= python3
 PYTEST ?= pytest
@@ -45,6 +45,12 @@ test-c2-full:
 # Same for C1 (its own containers on other spare ports).
 test-c1-full:
 	PYTHON=$(PYTHON) scripts/test_c1.sh $(ARGS)
+
+# Cross-component integration tests (docs/05 §4) against a running, seeded stack with C3 handing
+# off to C2 (locally: add -f tests/integration/compose.handoff.yml to `up`). Not run in CI.
+# HOMEAI_API_URL defaults to the local gateway; point it at EC2 only when the team agrees.
+test-integration:
+	HOMEAI_API_URL=$${HOMEAI_API_URL:-http://localhost:8080} $(PYTEST) -q -p no:cacheprovider tests/integration -m integration $(ARGS)
 
 test-common:
 	cd libs/homeai_common && $(PYTEST) -q

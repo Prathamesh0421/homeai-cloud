@@ -1,0 +1,219 @@
+"""I-2 (C3 -> C2) and I-3 (C4 settings -> C2) from docs/05 §4, with real clips and YAMNet.
+
+Each test uploads demo clips to Maple's Kitchen Mic, waits for C3 to classify them and hand
+them to C2, then checks C2's decision. YAMNet's confidence for a clip is whatever the model
+says, so expected decisions are worked out from the stored detection and the rule's threshold
+rather than hard-coded. Maple's settings and contact order are restored afterwards; the alerts
+raised are resolved.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+import pytest
+import seed_ids
+
+pytestmark = pytest.mark.integration
+
+MAPLE = seed_ids.HOUSES["maple"][0]
+MAPLE_TZ = seed_ids.HOUSES["maple"][3]
+ACME = seed_ids.TENANTS["acme"]
+FEED = "maple_kitchen_mic"
+OWNER = "owner.maple@acme.test"
+OPS = "ops@homeai.test"
+ALL_SERVICES = ["fire_safety", "distress", "intrusion", "fall", "wellness", "presence", "pet"]
+SENSITIVITY_OFFSET = {"low": 0.10, "medium": 0.0, "high": -0.10}
+
+
+def threshold(stack, alert_type_code: str, sensitivity: str) -> float:
+    """C2's effective threshold for Maple: its whole-house rule, else the tenant default."""
+    rules = stack.call(
+        "GET",
+        "/api/v1/alert-rules",
+        stack.user_token(OPS),
+        params={"tenant_id": ACME, "alert_type_code": alert_type_code, "is_enabled": True},
+    )["data"]
+    house = [r for r in rules if r["house_id"] == MAPLE and r["room_id"] is None]
+    default = [r for r in rules if r["scope"] == "tenant_default"]
+    rule = (house or default)[0]
+    shifted = rule["min_confidence"] + SENSITIVITY_OFFSET[sensitivity]
+    return round(min(max(shifted, 0.05), 0.95), 2)
+
+
+def put_settings(stack, *, sensitivity="medium", quiet: tuple[str, str] | None = None) -> None:
+    stack.call(
+        "PUT",
+        f"/api/v1/houses/{MAPLE}/settings",
+        stack.user_token(OWNER),
+        json={
+            "enabled_services": ALL_SERVICES,
+            "quiet_start": quiet[0] if quiet else None,
+            "quiet_end": quiet[1] if quiet else None,
+            "sensitivity": sensitivity,
+        },
+    )
+
+
+def quiet_window_around_now() -> tuple[str, str]:
+    now = datetime.now(ZoneInfo(MAPLE_TZ))
+    return (
+        (now - timedelta(hours=1)).strftime("%H:%M"),
+        (now + timedelta(hours=1)).strftime("%H:%M"),
+    )
+
+
+def contacts(stack) -> list[str]:
+    rows = stack.call("GET", f"/api/v1/houses/{MAPLE}/emergency-contacts", stack.user_token(OWNER))[
+        "data"
+    ]
+    return [c["contact_id"] for c in sorted(rows, key=lambda c: c["priority"])]
+
+
+def reorder(stack, contact_ids: list[str]) -> None:
+    stack.call(
+        "PUT",
+        f"/api/v1/houses/{MAPLE}/emergency-contacts/order",
+        stack.user_token(OWNER),
+        json={"contact_ids": contact_ids},
+    )
+
+
+def alert(stack, alert_id: str) -> dict:
+    return stack.call("GET", f"/api/v1/alerts/{alert_id}", stack.user_token(OWNER))["data"]
+
+
+def close(stack, alert_id: str) -> None:
+    for action in ("acknowledge", "resolve"):
+        stack.call("POST", f"/api/v1/alerts/{alert_id}/{action}", stack.user_token(OWNER), json={})
+
+
+def upload(stack, clip: str) -> dict:
+    detection = stack.wait_for_detection(stack.upload_clip(FEED, clip), stack.user_token(OWNER))
+    print(f"{clip}: {detection['top_label']} {detection['top_confidence']:.3f}")
+    return detection
+
+
+def detect(stack, clip: str, label: str) -> dict:
+    detection = upload(stack, clip)
+    if detection["top_label"] != label:
+        pytest.fail(f"YAMNet labelled {clip} {detection['top_label']}, not {label}: {detection}")
+    return detection
+
+
+# Low-severity clips (held in quiet hours): clip, label, alert type. YAMNet does not label every
+# demo clip (cough.wav scored nothing on 21 Nov), so the first one it recognises is used.
+HELD_CLIPS = (
+    ("cough.wav", "cough", "wellness_cough"),
+    ("dog.wav", "dog", "pet"),
+    ("speech.wav", "speech", "presence"),
+)
+
+
+def held_detection(stack) -> tuple[dict, str]:
+    for clip, label, alert_type in HELD_CLIPS:
+        detection = upload(stack, clip)
+        if detection["top_label"] == label:
+            return detection, alert_type
+    pytest.fail(f"YAMNet recognised none of {[c for c, *_ in HELD_CLIPS]}")
+
+
+def resend(stack, detection: dict, raised: list[str]) -> dict:
+    """Evaluates the stored detection again; any alert in the answer is recorded in ``raised``
+    first, so the fixture resolves it even if a later assertion fails."""
+    r = stack.evaluate(detection)
+    assert r.status_code in (200, 201), r.text
+    body = r.json()["data"]
+    if body.get("alert_id") and body["alert_id"] not in raised:
+        raised.append(body["alert_id"])
+    created = body["decision"] == "alert" and not body["duplicate"]
+    assert r.status_code == (201 if created else 200), r.text  # 201 = new alert raised
+    return body
+
+
+@pytest.fixture
+def maple(stack):
+    """Maple with every service on, no quiet hours, sensitivity medium; restored afterwards."""
+    before = stack.call("GET", f"/api/v1/houses/{MAPLE}/settings", stack.user_token(OWNER))["data"]
+    order = contacts(stack)
+    raised: list[str] = []
+    put_settings(stack)
+    try:
+        yield raised
+    finally:
+        # Settings and contacts first: the shared stack must not stay in test state even if
+        # resolving an alert fails.
+        stack.call(
+            "PUT",
+            f"/api/v1/houses/{MAPLE}/settings",
+            stack.user_token(OWNER),
+            json={
+                "enabled_services": before["enabled_services"],
+                "quiet_start": before["quiet_start"],
+                "quiet_end": before["quiet_end"],
+                "sensitivity": before["sensitivity"],
+            },
+        )
+        reorder(stack, order)
+        for alert_id in raised:
+            if alert(stack, alert_id)["status"] in ("open", "acknowledged"):
+                close(stack, alert_id)
+
+
+def test_i2_detection_raises_exactly_one_alert(stack, maple):
+    detection = detect(stack, "glass_break.wav", "glass_break")
+    assert detection["top_confidence"] >= threshold(stack, "intrusion", "medium"), detection
+
+    # C3's handoff already raised it: evaluating the same detection again is a duplicate.
+    again = resend(stack, detection, maple)
+    assert again["decision"] == "alert" and again["duplicate"] is True, again
+    got = alert(stack, again["alert_id"])
+    assert (got["alert_type_code"], got["severity"], got["status"]) == ("intrusion", "high", "open")
+    assert (got["detection_id"], got["media_id"]) == (detection["id"], detection["media_id"])
+    assert got["evidence"]["detection_available"] is True
+
+    # Exactly one alert for this detection: C2 keys alerts on detection_id, so any number of
+    # resends keep answering with the same alert.
+    assert resend(stack, detection, maple)["alert_id"] == again["alert_id"]
+
+
+def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
+    # Contacts reversed, so the email order must follow the new priorities, not the seed's.
+    order = list(reversed(contacts(stack)))
+    reorder(stack, order)
+    put_settings(stack, quiet=quiet_window_around_now())
+
+    # A low-severity sound (cough, dog or speech) is held in quiet hours, or is under the
+    # threshold anyway.
+    quiet, alert_type = held_detection(stack)
+    medium = threshold(stack, alert_type, "medium")
+    held = resend(stack, quiet, maple)
+    expected = "quiet_hours" if quiet["top_confidence"] >= medium else "below_threshold"
+    assert (held["decision"], held["reason"]) == ("no_alert", expected), (quiet, held)
+
+    # Glass break (intrusion, high) goes through quiet hours.
+    glass = detect(stack, "glass_break.wav", "glass_break")
+    assert glass["top_confidence"] >= threshold(stack, "intrusion", "medium"), glass
+    raised = resend(stack, glass, maple)
+    assert raised["decision"] == "alert" and raised["duplicate"] is True, raised
+    got = alert(stack, raised["alert_id"])
+    assert got["severity"] == "high"
+    emails = sorted(
+        (n for n in got["notifications"] if n["channel"] == "email"), key=lambda n: n["priority"]
+    )
+    assert [n["contact_id"] for n in emails] == order
+
+    # Outside quiet hours with sensitivity high (threshold -0.10) the same sound is re-judged.
+    put_settings(stack, sensitivity="high")
+    high = threshold(stack, alert_type, "high")
+    rejudged = resend(stack, quiet, maple)
+    print(
+        f"{alert_type} thresholds: medium {medium}, high {high}; sensitivity decides it: "
+        f"{high <= quiet['top_confidence'] < medium}"
+    )
+    if quiet["top_confidence"] >= high:
+        assert (rejudged["decision"], rejudged["severity"]) == ("alert", "low"), rejudged
+        assert rejudged["duplicate"] is False
+    else:
+        assert (rejudged["decision"], rejudged["reason"]) == ("no_alert", "below_threshold")

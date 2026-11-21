@@ -83,7 +83,7 @@ an Alert View with "The recording is not available". Use the script for the rows
 recording, and as the fallback for the quiet-hours rows if C3 is down (same command with `--label`).
 | Show | Command (**EC2**) / action | Expected |
 |---|---|---|
-| Quiet hours hold low alerts | `make demo-c2-quiet-hours ARGS=--cover-now`, then upload `cough.wav` (fallback `make demo-c2-detect ARGS="--label cough --conf 0.80"`) | `no_alert`, reason `quiet_hours` (C2 log `evaluate decision`); nothing in Alerts. Check in the first rehearsal that C3 labels `cough.wav` as `cough` at ≥ 0.55; script result checked 11 Nov |
+| Quiet hours hold low alerts | `make demo-c2-quiet-hours ARGS=--cover-now`, then upload `cough.wav` (fallback `make demo-c2-detect ARGS="--label cough --conf 0.80"`) | `no_alert`, reason `quiet_hours` (C2 log `evaluate decision`); nothing in Alerts. On EC2 (21 Nov) YAMNet gives `cough.wav` no label at all; upload `dog.wav` instead (pet, low, 0.722; turn the `pet` service on) or use the script fallback |
 | …but not high ones | upload `glass_break.wav` (fallback `make demo-c2-detect ARGS="--label glass_break --conf 0.80"`) | `alert` (high bypasses quiet hours), emails sent, recording plays |
 | Below threshold | `make demo-c2-detect ARGS="--label glass_break --conf 0.40"` | `no_alert`, `below_threshold` (0.55) |
 | Room rule wins (after step 2.2) | `make demo-c2-detect ARGS="--label fall_indicator --conf 0.68 --room Bathroom"` | `no_alert`, `below_threshold` (room rule 0.70, not the default 0.65) |

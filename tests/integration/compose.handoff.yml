@@ -1,0 +1,11 @@
+# Integration override (docs/05 §4): C3 hands detections to C2 instead of logging them, as on EC2
+# (infra/docker-compose.prod.yml). Use with the dev compose file:
+#   docker compose -f infra/docker-compose.yml -f tests/integration/compose.handoff.yml \
+#     --profile c1 --profile c3 --profile gateway up -d --build
+services:
+  c3-data:
+    environment:
+      HANDOFF_MODE: call
+  c3-worker:
+    environment:
+      HANDOFF_MODE: call
