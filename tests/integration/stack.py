@@ -133,13 +133,15 @@ class Stack:
         event: dict = {}
         while time.monotonic() < deadline:
             r = self.request("GET", f"/api/v1/records/clips/{media_id}", token)
+            if r.status_code == 429:  # C3 allows 60 record reads a minute per caller
+                raise StackError(f"C3 records rate limit hit while waiting for {media_id}")
             if r.status_code == 200:
                 event = r.json()["data"]
                 if event.get("status") == "failed":
                     raise StackError(f"C3 failed clip {media_id}: {event.get('error')}")
                 if event.get("status") == "analyzed":
                     break
-            time.sleep(1)
+            time.sleep(2)
         else:
             raise StackError(f"clip {media_id} not analyzed within {within:.0f} s: {event}")
         if event.get("handoff_status") != "done":

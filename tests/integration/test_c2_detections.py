@@ -90,7 +90,8 @@ def close(stack, alert_id: str) -> None:
 
 
 def detect(stack, clip: str, label: str) -> dict:
-    detection = stack.wait_for_detection(stack.upload_clip(FEED, clip), stack.user_token(OPS))
+    detection = stack.wait_for_detection(stack.upload_clip(FEED, clip), stack.user_token(OWNER))
+    print(f"{clip}: {detection['top_label']} {detection['top_confidence']:.3f}")
     if detection["top_label"] != label:
         pytest.fail(f"YAMNet labelled {clip} {detection['top_label']}, not {label}: {detection}")
     return detection
@@ -129,7 +130,7 @@ def maple(stack):
 
 
 def test_i2_detection_raises_exactly_one_alert(stack, maple):
-    started = datetime.now(UTC)
+    started = datetime.now(UTC) - timedelta(minutes=2)  # margin for clock skew with the host
     detection = detect(stack, "glass_break.wav", "glass_break")
     assert detection["top_confidence"] >= threshold(stack, "intrusion", "medium"), detection
 
@@ -142,7 +143,7 @@ def test_i2_detection_raises_exactly_one_alert(stack, maple):
     assert (got["detection_id"], got["media_id"]) == (detection["id"], detection["media_id"])
     assert got["evidence"]["detection_available"] is True
 
-    # Exactly one alert for this detection: one new intrusion alert at Maple since the upload.
+    # Exactly one alert for this detection (assumes nobody else uploads to Maple meanwhile).
     rows = stack.call(
         "GET",
         "/api/v1/alerts",
@@ -167,7 +168,7 @@ def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
 
     # Glass break (intrusion, high) goes through quiet hours.
     glass = detect(stack, "glass_break.wav", "glass_break")
-    assert glass["top_confidence"] >= medium, glass
+    assert glass["top_confidence"] >= threshold(stack, "intrusion", "medium"), glass
     raised = resend(stack, glass)
     assert raised["decision"] == "alert" and raised["duplicate"] is True, raised
     maple.append(raised["alert_id"])
@@ -182,6 +183,10 @@ def test_i3_quiet_hours_sensitivity_and_contact_order(stack, maple):
     put_settings(stack, sensitivity="high")
     high = threshold(stack, "wellness_cough", "high")
     rejudged = resend(stack, cough)
+    print(
+        f"cough thresholds: medium {medium}, high {high}; sensitivity decides it: "
+        f"{high <= cough['top_confidence'] < medium}"
+    )
     if cough["top_confidence"] >= high:
         assert (rejudged["decision"], rejudged["severity"]) == ("alert", "low"), rejudged
         assert rejudged["duplicate"] is False
