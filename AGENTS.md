@@ -19,7 +19,8 @@ home "camera feeds" are uploaded, classified with the pre-trained **YAMNet** aud
 > then and no longer applies (it is kept for its record and AWS notes). Work now follows the original plan:
 > `docs/06_ROADMAP_AND_DEMO.md` (including §6, final project) and the task lists in the component plans.
 > The **final project presentation is Wed 2 Dec 2026** (see the course-dates note at the top of `06`).
-> **Final-project work follows `docs/08_FINAL_DELIVERABLES.md`** (agreed 21 Nov 2026): the scalability layout
+> **Final-project work follows `docs/08_FINAL_DELIVERABLES.md`** (agreed 21 Nov 2026; build and deploy before the
+> 2 Dec presentation, final package and report due 11 Dec): the scalability layout
 > from the submitted design (several copies of every service behind a load balancer; on AWS an ALB, Auto Scaling
 > groups, HTTPS, CloudWatch, MongoDB Atlas, ECR), integration tests, and the final report. Its task IDs
 > (S-*, A-*), owners and "done when" checks are binding. Nothing is created in AWS except by Mohit (AWS lead).

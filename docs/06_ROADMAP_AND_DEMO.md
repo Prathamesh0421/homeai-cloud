@@ -8,7 +8,7 @@ and the component plans (C1-*, C2-*, C3-*, C4-*).
 > (`07_DEMO_NOV_11.md`). The **final project presentation is Wed 2 Dec 2026**, before the M4 freeze
 > (Thu 3 Dec) and week 5 below: finish each component's remaining tasks and the §6 items by about
 > **Sun 29 Nov** and keep 30 Nov–1 Dec for rehearsal. Order and scope are unchanged; each owner
-> adjusts their own dates in §2. The final package (D5) is due 16 Dec (SRS §8).
+> adjusts their own dates in §2. The final package and report (D5) are due **Fri 11 Dec 2026**; all build work, including the scaled AWS layout, finishes before 2 Dec.
 > **21 Nov 2026:** the final project now includes the load-balanced, auto-scaled AWS layout from D1/SRS §7.3;
 > tasks, owners and dates are in `08_FINAL_DELIVERABLES.md`.
 

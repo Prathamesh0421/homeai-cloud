@@ -25,7 +25,7 @@ This folder is the complete implementation plan for HomeAI Cloud. It is written 
 | `components/C4_DASHBOARD_AND_AUTH.md` | C4 full plan incl. shared app shell | Mohit |
 | `05_INTEGRATION_AND_TESTING.md` | Test strategy, contract tests, E2E scenarios, seed/demo data | Everyone |
 | `06_ROADMAP_AND_DEMO.md` | Week-by-week schedule, dependencies, component demo + video scripts, final project | Everyone |
-| `08_FINAL_DELIVERABLES.md` | **Final project (D4 2 Dec, D5 16 Dec)**: scalability (copies behind a load balancer, ALB + Auto Scaling on AWS), integration, report; tasks S-*/A-* with owners | Everyone, from 21 Nov |
+| `08_FINAL_DELIVERABLES.md` | **Final project (D4 2 Dec, D5 11 Dec)**: scalability (copies behind a load balancer, ALB + Auto Scaling on AWS), integration, report; tasks S-*/A-* with owners | Everyone, from 21 Nov |
 
 ## Deliverable #3 (component demo) — what graders check
 | Criterion | Points | What we must show |

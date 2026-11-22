@@ -11,10 +11,15 @@ Agreed 21 Nov 2026 (scope decision, see §2). Owners marked *(proposed)* are con
 | Deliverable | What | Date | Who |
 |---|---|---|---|
 | **D4 — Integrated demo / final presentation** | Group scenario E2E-1 live on AWS, scalability shown live, slides | **Wed 2 Dec 2026** | team |
-| **D5 — Final package** | IEEE-format report (updates D1/D2 where the build changed), code, videos, `docs/RESULTS.md` | 16 Dec 2026 (SRS §8; confirm on Canvas) | team |
+| **D5 — Final package** | IEEE-format report (updates D1/D2 where the build changed), code, videos, `docs/RESULTS.md` | **Fri 11 Dec 2026** (course update; SRS §8 said 16 Dec) | team |
+
+**Everything in Tier 1 and Tier 2 (§4–5) is built, deployed and measured before the 2 Dec presentation**, so
+the live demo shows the scaled layout on AWS. The time after 2 Dec is only for the final package: writing the
+report from the evidence already collected, fixing what the presentation feedback asks for, and tearing down AWS
+after grading. No new infrastructure work is planned after the freeze.
 
 Working dates: code complete and measured by **Sun 29 Nov** (freeze), rehearse **30 Nov – 1 Dec**, present
-**2 Dec**. Thanksgiving is Thu 26 Nov.
+**2 Dec**, final package by **11 Dec**. Thanksgiving is Thu 26 Nov.
 
 ## 2. What the submitted design promises, and the scope we build
 SRS v3 objective 6: *"Run on Amazon EC2, with a documented design for load balancing, scalability and
@@ -135,8 +140,9 @@ change); new Playwright specs follow `web/e2e/` (`npm run e2e`, `E2E_BASE_URL`).
 | Fri 27 – Sat 28 Nov | A-7/A-8 on AWS; measurements (S-7, S-8, I-8) into `docs/RESULTS.md`; A-10 re-runs; E2E-1 |
 | Sun 29 Nov | Freeze; slides with the scalability evidence |
 | Mon 30 Nov – Tue 1 Dec | Two full rehearsals on the ALB URL; fallback: single-EC2 stack + recorded video |
-| Wed 2 Dec | Present (D4) |
-| by 16 Dec | Final package (D5); tear down AWS after grading |
+| Wed 2 Dec | Present (D4), with the scaled AWS layout live |
+| Thu 3 – Thu 10 Dec | Final report (§7): D2 chapter updates, design vs deployed, scalability evidence; feedback fixes |
+| Fri 11 Dec | Final package (D5) submitted; tear down AWS after grading |
 
 ## 9. Picking up a task (members and AI assistants)
 1. Read `AGENTS.md`, this file, and the plan of the component you touch.
