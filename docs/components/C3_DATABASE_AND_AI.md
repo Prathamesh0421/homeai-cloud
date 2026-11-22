@@ -299,6 +299,15 @@ Slow (marked `@pytest.mark.slow`, run before demos): real YAMNet on demo clips โ
 | C3-19 | EC2 deployment: image build on host, scale workers, verify real S3; Playwright `e2e/c3-model-activate.spec.ts` | infra ยง8 |
 | C3-20 | Demo prep + video | all |
 
+### 8.1 Final project tasks (`docs/08_FINAL_DELIVERABLES.md`, from 21 Nov 2026)
+- **S-3** advisory lock around Alembic `upgrade` in `services/c3_data/alembic/env.py`.
+- **S-4** scheduler jobs (backup, integrity, activity rollup) take a Postgres advisory lock per run, because
+  `--scale` copies share one environment (the `C3_SCHEDULER_ENABLED=false` approach cannot differ per copy).
+- **S-5** records rate limit counted in PostgreSQL; **S-6** model cache reloads after an activation on another copy.
+- **S-1/S-2** compose scale override and Caddy load balancing (infra owner); **S-7** `scripts/perf/clip_to_alert.py`
+  and the queued-clip backlog metric for the worker Auto Scaling group; **A-2** Mongo move to Atlas with Mohit;
+  I-1, I-8; Playwright `c3-model-activate.spec.ts`; restore drill.
+
 ## 9. Acceptance checklist
 - [ ] Every uploaded clip ends `analyzed` (or `failed` after 3 attempts) and C2 receives exactly one evaluate per detection.
 - [ ] Two workers never process the same clip (test + live scale demo).

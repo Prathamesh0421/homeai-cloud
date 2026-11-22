@@ -89,6 +89,34 @@ flowchart TB
 - RDS in the same VPC, security group allows 5432 only from the EC2 security group.
 - EC2 security group: 80/443 from anywhere, 22 from team IPs only.
 - Caddy serves the built SPA and routes `/api/v1/*` to services (routing table in `03_REPO_AND_INFRA.md`).
+- Deployed for the component demos (11 Nov): one EC2 t3.medium, as above.
+
+### 5.1 Scaled layout for the final project (`08_FINAL_DELIVERABLES.md`, agreed 21 Nov 2026)
+The design we submitted (SRS v3 §7.3, D1 §3.1) puts the stateless services behind a load balancer in Auto
+Scaling groups. For the final project:
+```mermaid
+flowchart TB
+  U[Users / browsers] -->|HTTPS 443, ACM cert| ALB[Application Load Balancer, 2 AZs]
+  subgraph API[API Auto Scaling group: same images on every instance]
+    CADDY1[Caddy :80 + SPA] --> SVC1[c1 / c2 / c3-data / c4, N copies each]
+  end
+  subgraph WK[Worker Auto Scaling group]
+    W[c3-worker, N copies]
+  end
+  ALB --> CADDY1
+  SVC1 & W --> RDS[(RDS PostgreSQL)]
+  SVC1 & W --> ATLAS[(MongoDB Atlas M0)]
+  SVC1 & W --> S3[(S3)]
+  SVC1 --> SNS[SNS] & SM[Secrets Manager]
+  API & WK -.logs, alarms.-> CW[CloudWatch]
+  ECR[(ECR images)] -.pull.-> API & WK
+```
+- **Any copy serves any request**: identity is in the JWT; all data is in RDS, Atlas and S3; scheduled jobs and
+  migrations take Postgres advisory locks; rate limits are counted in PostgreSQL (`08` S-3…S-5).
+- Within one host, Caddy load-balances over the copies of each service (`08` S-2); across hosts, the ALB does.
+- Scaling triggers (SRS §7.3.1): average CPU for the API group; queued-clip backlog for the worker group.
+- Not built (documented as the production target in the final report, `08` §2): SQS hand-offs, Redis, WebSockets,
+  Multi-AZ RDS + read replica, NAT gateways, bastion.
 
 ## 6. Gateway routing (path prefix → service)
 | Path (all under `/api/v1`) | Service |
