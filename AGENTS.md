@@ -19,6 +19,11 @@ home "camera feeds" are uploaded, classified with the pre-trained **YAMNet** aud
 > then and no longer applies (it is kept for its record and AWS notes). Work now follows the original plan:
 > `docs/06_ROADMAP_AND_DEMO.md` (including §6, final project) and the task lists in the component plans.
 > The **final project presentation is Wed 2 Dec 2026** (see the course-dates note at the top of `06`).
+> **Final-project work follows `docs/08_FINAL_DELIVERABLES.md`** (agreed 21 Nov 2026; build and deploy before the
+> 2 Dec presentation, final package and report due 11 Dec): the scalability layout
+> from the submitted design (several copies of every service behind a load balancer; on AWS an ALB, Auto Scaling
+> groups, HTTPS, CloudWatch, MongoDB Atlas, ECR), integration tests, and the final report. Its task IDs
+> (S-*, A-*), owners and "done when" checks are binding. Nothing is created in AWS except by Mohit (AWS lead).
 
 ## 2. Read these before writing code (in this order)
 1. `docs/01_ARCHITECTURE.md` — system shape, data ownership, the clip-to-alert flow.
@@ -27,6 +32,7 @@ home "camera feeds" are uploaded, classified with the pre-trained **YAMNet** aud
 4. `docs/04_FRONTEND.md` — SPA structure, routes, shared UI components.
 5. Your component plan in `docs/components/Cx_*.md` — scope, data model, endpoints, jobs, UI, tests, tasks.
 6. `docs/05_INTEGRATION_AND_TESTING.md` and `docs/06_ROADMAP_AND_DEMO.md` when integrating or preparing demos.
+7. `docs/08_FINAL_DELIVERABLES.md` for any final-project task (scalability, AWS layout, integration, report).
 
 The approved design (Deliverable #2 PDF) is the source of truth for intent; these docs are the source of
 truth for implementation details. Where they differ, these docs win (they record D3 decisions).
@@ -58,6 +64,9 @@ truth for implementation details. Where they differ, these docs win (they record
   Recharts, Vitest + Testing Library, Playwright for end-to-end demo flows.
 - Runtime: Docker Compose (local and on one AWS EC2 host), Caddy reverse proxy, AWS RDS PostgreSQL,
   MongoDB container, S3, SNS, Secrets Manager. LocalStack replaces S3/SNS/Secrets Manager locally.
+  Final project (`docs/08_FINAL_DELIVERABLES.md`): N copies per service; ALB + Auto Scaling groups, MongoDB
+  Atlas, ECR, CloudWatch; infrastructure as Terraform in `infra/aws/`. Code must stay safe with several copies:
+  no per-process state that must be shared (use PostgreSQL), advisory locks for jobs and migrations.
 
 ## 5. Code style
 - `ruff check` and `ruff format` must pass (config in `pyproject.toml`). Type hints on all public functions.

@@ -195,6 +195,13 @@ Web: RouteGuard redirects, AuthProvider 401 handling, SortableList keyboard reor
 | C4-16 | AWS setup lead (03 §8): EC2, RDS, S3, secrets, IAM, Caddy TLS | week 3 |
 | C4-17 | Playwright `e2e/c4-login-settings.spec.ts`, demo prep, video | all |
 
+### 8.1 Final project tasks (`docs/08_FINAL_DELIVERABLES.md`, from 21 Nov 2026)
+- **S-3** advisory lock around Alembic `upgrade` in `services/c4_dashboard/alembic/env.py`; **S-6** JWKS and
+  revocation caches with several copies (document the window).
+- AWS lead: **A-0** rotate exposed secrets, **A-2** Atlas, **A-4…A-8** launch templates, ALB, HTTPS, Auto Scaling,
+  CloudWatch (apply the Terraform from A-1), **A-9** runbook; I-5, I-7; Playwright `c4-login-settings.spec.ts`;
+  README; E2E-1 UI spec lead.
+
 ## 9. Acceptance checklist
 - [ ] Every other service verifies C4 tokens through JWKS; service tokens work for C3→C2, C2→C1, C4→C1/C2/C3.
 - [ ] Lockout, logout revocation and role landing work; wrong-role routes redirect.

@@ -25,6 +25,7 @@ This folder is the complete implementation plan for HomeAI Cloud. It is written 
 | `components/C4_DASHBOARD_AND_AUTH.md` | C4 full plan incl. shared app shell | Mohit |
 | `05_INTEGRATION_AND_TESTING.md` | Test strategy, contract tests, E2E scenarios, seed/demo data | Everyone |
 | `06_ROADMAP_AND_DEMO.md` | Week-by-week schedule, dependencies, component demo + video scripts, final project | Everyone |
+| `08_FINAL_DELIVERABLES.md` | **Final project (D4 2 Dec, D5 11 Dec)**: scalability (copies behind a load balancer, ALB + Auto Scaling on AWS), integration, report; tasks S-*/A-* with owners | Everyone, from 21 Nov |
 
 ## Deliverable #3 (component demo) — what graders check
 | Criterion | Points | What we must show |
@@ -38,6 +39,8 @@ Every component plan has a **Demo** section with a live-demo script and a video 
 ## Decisions taken for implementation (recorded here, binding)
 - Backend: **Python 3.11 + FastAPI** for all four components; C3 worker in the same codebase.
 - Runtime: **AWS EC2 + Docker Compose**, RDS PostgreSQL, MongoDB container, S3, SNS, Secrets Manager.
+  For the final project (21 Nov): every service runs as several copies behind a load balancer, on AWS behind an
+  ALB with Auto Scaling groups, MongoDB Atlas, ECR and CloudWatch (`08_FINAL_DELIVERABLES.md`).
 - One React SPA; each member owns a feature folder; C4 owns the shell and shared UI kit.
 - Additions beyond the D2 design (needed for D3 demos and dashboards) are marked **[D3 addition]** in the
   component plans: C3 model registry and test-classify endpoints; C1 `GET /feeds/stats`; C3

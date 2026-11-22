@@ -8,7 +8,9 @@ and the component plans (C1-*, C2-*, C3-*, C4-*).
 > (`07_DEMO_NOV_11.md`). The **final project presentation is Wed 2 Dec 2026**, before the M4 freeze
 > (Thu 3 Dec) and week 5 below: finish each component's remaining tasks and the §6 items by about
 > **Sun 29 Nov** and keep 30 Nov–1 Dec for rehearsal. Order and scope are unchanged; each owner
-> adjusts their own dates in §2.
+> adjusts their own dates in §2. The final package and report (D5) are due **Fri 11 Dec 2026**; all build work, including the scaled AWS layout, finishes before 2 Dec.
+> **21 Nov 2026:** the final project now includes the load-balanced, auto-scaled AWS layout from D1/SRS §7.3;
+> tasks, owners and dates are in `08_FINAL_DELIVERABLES.md`.
 
 ## 1. Milestones
 | Milestone | Date | Exit criteria |
@@ -95,12 +97,22 @@ phone ready for the email/alert-view step (C2), C3 model warmed (run Test Classi
 | Time zones (quiet hours) | Wrong suppression | Store house timezone (C1), unit tests incl. wrap-around and DST | Prathamesh |
 | Network failure on demo day | Live demo fails | Local Docker stack with same seed + recorded video as fallback | all |
 | Secrets leak | Account compromise | No keys in git; IAM role on EC2; Secrets Manager; `gitleaks` in CI | Mohit |
+| Repo is public (since 12 Nov): demo password and dev service-client secrets are known | Anyone can mint tokens on AWS | Rotate before the ALB goes live (`08` A-0); `DEMO_MODE` only for the demo | Mohit |
+| AWS scaling layout (`08` Tier 2) not ready by 29 Nov | No live scalability demo | Tier 1 (copies behind Caddy) is the fallback evidence; keep the single-EC2 stack deployable | Mohit + all |
+| MongoDB move to Atlas loses data or breaks a role | Pipeline down | Dry run with `mongodump`/`mongorestore` first; keep the EC2 Mongo until A-10 passes | Mohit + Renuka |
+| Scaled layout costs more | Budget overrun | ASGs at min 1 outside sessions, scale to 2 only to measure/demo, stop when idle | Mohit |
 
 ## 6. Final project (after component demos)
-- [ ] E2E-1 passes on EC2 (automated test + UI spec) and is demoed as the group scenario.
-- [ ] I-1 … I-8 pass on EC2; perf report (`05` §7) in `docs/RESULTS.md` closes TBD-3 and TBD-5.
-- [ ] HTTPS with a domain; CloudWatch logs; nightly backups verified with a restore drill.
+Full plan with task IDs, owners and acceptance: **`08_FINAL_DELIVERABLES.md`** (agreed 21 Nov 2026). Headline items:
+- [ ] **Scalability as designed in D1/SRS §7.3** (`08` §4–5): every service runs as several copies behind a load
+      balancer (S-1…S-8), then on AWS behind an ALB with Auto Scaling groups, HTTPS, CloudWatch and MongoDB Atlas
+      (A-0…A-10). Tier 3 of D1 (SQS, Redis, WebSockets, Multi-AZ, NAT, bastion…) is documented, not built.
+- [ ] E2E-1 passes on AWS (automated test + UI spec) and is demoed as the group scenario.
+- [ ] I-1 … I-8 pass on AWS; perf and scale report (`05` §7) in `docs/RESULTS.md` closes TBD-3 and TBD-5.
+- [ ] HTTPS with a domain (A-6); CloudWatch logs and alarms (A-8); nightly backups verified with a restore drill.
+- [ ] Secrets exposed by the public repo rotated before the ALB goes live (A-0).
 - [ ] Accessibility pass (keyboard-only walk-through of each page) and UI polish.
 - [ ] README with architecture, setup, demo accounts, and credits for datasets (ESC-50, YAMNet/AudioSet).
-- [ ] Final report: update D2 design where implementation changed (list from `docs/CHANGELOG.md`).
+- [ ] Final report: update D2 design where implementation changed (list from `docs/CHANGELOG.md`), plus the
+      "design vs deployed" and scalability-evidence sections (`08` §7).
 - [ ] Tear down AWS resources after grading.

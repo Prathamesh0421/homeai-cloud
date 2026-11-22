@@ -218,6 +218,11 @@ playback URL returns presigned URL; `GET /feeds/stats` counts. Target coverage �
 | C1-14 | Playwright `e2e/c1-feed-setup.spec.ts` (demo rehearsal) | C1-11..13 |
 | C1-15 | Deploy on EC2, verify with real S3; demo prep and video | infra §8 |
 
+### 8.1 Final project tasks (`docs/08_FINAL_DELIVERABLES.md`, from 21 Nov 2026)
+- **S-3** advisory lock around Alembic `upgrade` in `services/c1_iot/alembic/env.py` (several copies migrate on start).
+- **S-6** confirm C1 keeps no per-process state that must be shared; ConnectivityMonitor already takes an advisory lock.
+- **I-1** (with Renuka), **I-4** (with Prathamesh), I-6; Playwright `web/e2e/c1-feed-setup.spec.ts`; keyboard pass on C1 pages.
+
 ## 9. Acceptance checklist
 - [x] All endpoints in §3 exist, documented in `/api/v1/docs/c1`, and follow the envelope.
 - [x] Ingest is exactly-once (duplicate client id) and leaves no orphan object on DB failure (test proves it).

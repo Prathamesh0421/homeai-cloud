@@ -266,6 +266,15 @@ If-Match 412; alert-view 200/401/404; stats grouping. Coverage ≥ 80% on `servi
 | C2-16 | Integration with C3 (real detections) and C4 settings (quiet hours, sensitivity) — tests I-2, I-3 | C3-09, C4-06 |
 | C2-17 | AWS: real SNS, confirm demo subscriptions, Playwright `e2e/c2-alert-lifecycle.spec.ts`, video | infra §8 |
 
+### 8.1 Final project tasks (`docs/08_FINAL_DELIVERABLES.md`, from 21 Nov 2026)
+- **S-3** advisory lock around Alembic `upgrade` in `services/c2_alerts/alembic/env.py`.
+- **S-5** public alert-view rate limit (60/min/IP) counted in PostgreSQL (new `c2` table + migration) instead of
+  `SlidingWindowLimiter` memory; client IP from `X-Forwarded-For` behind Caddy and the ALB.
+- **S-6** HMAC-key cache (5 min) and C1 clip-URL cache are per copy and safe; NotificationRetry and
+  ContactSubscriptionSync already take advisory locks.
+- **S-7** `scripts/perf/api_load.py` with Renuka (`/alerts/evaluate` p95 < 500 ms); **A-1** Terraform skeleton and
+  **A-3** ECR images from CI (CI owner); I-4 with Ekant; report "design vs deployed" C2 rows.
+
 ## 9. Acceptance checklist
 - [ ] Every row of the rule-match, transition, rule-validation and signed-link decision tables (D2 §4) has a test.
 - [ ] Same detection never creates two alerts (replay + concurrency tests).

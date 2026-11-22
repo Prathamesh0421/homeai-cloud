@@ -232,6 +232,12 @@ and generates a 3 kHz beep pattern as a smoke-alarm stand-in with Python/numpy. 
 10. **Cost control**: stop EC2 and RDS when not demoing (RDS stays stopped up to 7 days); delete everything after grading.
 
 ---
+### 8.1 Final project: scaled layout
+From 21 Nov 2026 the AWS layout grows to an ALB, Auto Scaling groups (API and worker), HTTPS (ACM), MongoDB
+Atlas, ECR images and CloudWatch, written as Terraform in `infra/aws/terraform/` and applied by Mohit; on one host
+`infra/docker-compose.scale.yml` runs several copies of each service behind Caddy. Tasks, owners and checks:
+`08_FINAL_DELIVERABLES.md` §4–5.
+
 ## 9. CI/CD — `.github/workflows/ci.yml`
 - Trigger: pull requests and pushes to `main`.
 - Jobs: `lint` (ruff, eslint, tsc) → `test-python` (matrix c1..c4 + common; services: postgres:16, mongo:7;

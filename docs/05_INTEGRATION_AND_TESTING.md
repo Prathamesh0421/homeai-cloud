@@ -60,11 +60,18 @@ Automated as `tests/integration/test_e2e_intrusion.py` (log notifier) and `web/e
 | `e2e-intrusion.spec.ts` | E2E-1 UI steps |
 
 ## 7. Performance and scaling (final project; closes TBD-3 and TBD-5)
+Tasks S-7, S-8 and A-7 in `08_FINAL_DELIVERABLES.md`.
 - `scripts/perf/clip_to_alert.py --clips 100 --rate 2/s`: uploads clips, polls C2 until each alert/no_alert,
   writes CSV of `upload→queued`, `queued→analyzed`, `analyzed→decision`, `decision→email sent`.
-- Report p50/p95 per stage with 1 and 2 workers on `t3.large`; record results in `docs/RESULTS.md`.
-- Targets from D2: `/alerts/evaluate` p95 < 500 ms; clip-to-handoff p95 < 5 s at 1 clip/s.
+- `scripts/perf/api_load.py`: concurrent `GET /alerts`, `POST /alerts/evaluate`, `GET /dashboard/summary`
+  through the gateway or ALB; p50/p95 and error rate per endpoint.
+- Report p50/p95 per stage with **1 vs 2 copies** of each API service and **1 vs 2 workers** (one host, `08`
+  Tier 1), then on AWS with the ALB and Auto Scaling groups (`08` Tier 2, scale-out observed); record results in
+  `docs/RESULTS.md`.
+- Failover (S-8): stop one copy of each service under load; record error rate and recovery time.
+- Targets from D2: `/alerts/evaluate` p95 < 500 ms; clip-to-handoff p95 < 5 s at 1 clip/s. Scaling triggers
+  from SRS §7.3.1: average CPU for the API tier, queued-clip backlog for the worker tier.
 
 ## 8. Definition of "integrated"
-A feature is integrated when its I-test passes against the stack on EC2 (not only locally), its Playwright
+A feature is integrated when its I-test passes against the stack on AWS (EC2, and the ALB URL once `08` Tier 2 is live; not only locally), its Playwright
 spec passes, and the owners of both sides have ticked it in their acceptance checklists.
