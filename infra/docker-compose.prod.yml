@@ -40,7 +40,8 @@ services:
   c4-dashboard:
     environment:
       RUN_MIGRATIONS: "1"
-      DEMO_MODE: "1"
+      # Default off for prod; set DEMO_MODE=1 in .env only for the live demo (A-0).
+      DEMO_MODE: ${DEMO_MODE:-0}
     depends_on: !override
       mongo:
         condition: service_healthy
@@ -52,7 +53,7 @@ services:
   c1-iot:
     environment:
       RUN_MIGRATIONS: "1"
-      DEMO_MODE: "1"
+      DEMO_MODE: ${DEMO_MODE:-0}
       # Demo: the online -> offline flip shows within seconds (default 60 s).
       C1_CONNECTIVITY_INTERVAL_S: "10"
     depends_on:
@@ -63,7 +64,7 @@ services:
     environment:
       RUN_MIGRATIONS: "1"
       NOTIFIER: sns
-      DEMO_MODE: "1"
+      DEMO_MODE: ${DEMO_MODE:-0}
     depends_on:
       c4-dashboard:
         condition: service_healthy
@@ -72,7 +73,7 @@ services:
     environment:
       RUN_MIGRATIONS: "1"
       HANDOFF_MODE: call
-      DEMO_MODE: "1"
+      DEMO_MODE: ${DEMO_MODE:-0}
     depends_on:
       c4-dashboard:
         condition: service_healthy
@@ -80,7 +81,7 @@ services:
   c3-worker:
     environment:
       HANDOFF_MODE: call
-      DEMO_MODE: "1"
+      DEMO_MODE: ${DEMO_MODE:-0}
 
   caddy:
     ports: !override

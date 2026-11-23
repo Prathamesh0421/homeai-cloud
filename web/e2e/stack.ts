@@ -55,7 +55,7 @@ const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 export async function call<T>(
   api: APIRequestContext,
-  method: "GET" | "POST" | "DELETE",
+  method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE",
   path: string,
   email: string,
   body?: object,

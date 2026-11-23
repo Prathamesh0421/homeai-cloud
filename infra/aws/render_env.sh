@@ -77,7 +77,8 @@ cat <<EOF
 ENV=prod
 PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
 SITE_ADDRESS=${SITE_ADDRESS}
-DEMO_MODE=1
+# Default off; set DEMO_MODE=1 only for the live demo window (A-0).
+DEMO_MODE=${DEMO_MODE:-0}
 
 # AWS — real services (no LocalStack). Empty endpoint = use the real regional API.
 # C4_AWS_ENDPOINT_URL clears C4's old LocalStack default when present.

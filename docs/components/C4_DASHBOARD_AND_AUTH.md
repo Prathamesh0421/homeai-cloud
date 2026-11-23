@@ -116,6 +116,14 @@ reset counters; last_login_at = now; token = issue_user(user); landing by role
 Claims per contracts §2.2/2.3; `jti=uuid4`; `kid` header; PyJWT RS256. Service clients verified with
 bcrypt on `secret_hash`; requested scopes must be ⊆ allowed. Purge `revoked_tokens` past `expires_at` hourly.
 
+**Cache windows (contracts §2.4, S-6):** every service verifies via `homeai_common.auth`. JWKS is cached
+**10 min** (`JWKS_CACHE_TTL_SECONDS=600`; unknown `kid` forces a refetch). The revocation list from
+`GET /auth/revoked` is cached **60 s** (`REVOCATION_CACHE_TTL_SECONDS`). C4 enforces the denylist
+strictly from Postgres on `/auth/me` (and when it passes `revoked_jtis` into `verify_token`); C1–C3
+poll the list through the shared cache wired by `configure_jwks` (service token from the shared
+`.env`). After logout, other services return 401 `token_revoked` within **one cache window (≤ 60 s)**.
+Override the window with `REVOCATION_CACHE_TTL_SECONDS` (integration tests).
+
 ### 4.3 Dashboard summary
 ```json
 { "kpis": {"houses": 128, "feeds_total": 420, "feeds_active": 412, "feeds_online": 400, "alerts": 57, "open_alerts": 5, "clips_classified": 9340},

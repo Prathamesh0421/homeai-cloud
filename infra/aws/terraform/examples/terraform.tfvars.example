@@ -1,0 +1,36 @@
+# Copy to ../terraform.tfvars (gitignored via *.tfvars if you add that pattern —
+# this repo gitignores only secrets/.env; do NOT commit terraform.tfvars with account IDs
+# you care about keeping private, and NEVER put passwords here).
+
+aws_region  = "us-west-2"
+team        = "cmpe281"
+domain_name = "homeai.duckdns.org"
+
+# Your laptop / dorm / campus /32s — required for SSH. Empty = no SSH ingress.
+team_ssh_cidrs = [
+  # "203.0.113.10/32",
+]
+
+# From the Nov demo (aws ec2 describe-security-groups --filters Name=group-name,Values=homeai-rds)
+rds_security_group_id = "" # e.g. "sg-0abc..."
+rds_endpoint          = "" # e.g. "homeai-db.xxxxx.us-west-2.rds.amazonaws.com"
+
+# Optional: override derived bucket name homeai-cmpe281-<accountid>
+# s3_bucket_name = "homeai-cmpe281-123456789012"
+
+key_name = "" # EC2 key pair name, or leave empty
+
+# First apply: create ECR/IAM/ALB without EC2 burn
+# enable_asg = false
+
+# After DuckDNS ACM validation records are published:
+# enable_https_listener      = true
+# enable_acm_validation_wait = true
+
+github_org  = "Prathamesh0421"
+github_repo = "homeai-cloud"
+# create_github_oidc_provider = true
+
+ecr_image_tag = "main"
+repo_clone_url = "https://github.com/Prathamesh0421/homeai-cloud.git"
+repo_ref       = "main"
