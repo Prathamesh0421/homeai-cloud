@@ -1,0 +1,104 @@
+# A-3 (docs/08_FINAL_DELIVERABLES.md §5): push the service images to ECR for the Tier 2 Auto
+# Scaling groups, once CI has passed on main. No AWS keys in GitHub: the job assumes Mohit's
+# Terraform role (infra/aws/terraform/github_oidc.tf, trusted for this repo's main branch)
+# through GitHub OIDC. Set the repository variable AWS_ROLE_ARN to the Terraform output
+# `github_actions_ecr_role_arn`; until then the job is skipped, so forks and PRs never need AWS.
+#
+# Tags: :main (what the launch templates pull, var.ecr_image_tag) and :sha-<commit>, kept 10
+# deep by the ECR lifecycle policy. Run it by hand from the Actions tab (main only) to push now.
+
+name: ECR push
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ecr-push
+  cancel-in-progress: false   # never stop a push halfway; the next run pushes newer tags
+
+permissions:
+  contents: read
+  id-token: write   # GitHub OIDC token for AWS
+
+env:
+  AWS_REGION: us-west-2
+
+jobs:
+  push:
+    name: Push ${{ matrix.image.name }}
+    # Only main (the role trusts nothing else), only after a green CI push run, only when the
+    # role is configured.
+    if: >-
+      vars.AWS_ROLE_ARN != '' && (
+        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main') ||
+        (github.event.workflow_run.conclusion == 'success' &&
+         github.event.workflow_run.event == 'push')
+      )
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          # repos: ECR repositories under homeai/ (infra/aws/terraform/data.tf ecr_repos).
+          # cache: the build-images scope in ci.yml, so the layers CI just built are reused.
+          - { name: c1-iot, file: services/c1_iot/Dockerfile, cache: c1_iot, repos: c1-iot }
+          - { name: c2-alerts, file: services/c2_alerts/Dockerfile, cache: c2_alerts, repos: c2-alerts }
+          # One image for the C3 API and worker (compose runs the worker with another command).
+          - { name: c3-data, file: services/c3_data/Dockerfile, cache: c3_data, repos: c3-data c3-worker }
+          - { name: c4-dashboard, file: services/c4_dashboard/Dockerfile, cache: c4_dashboard, repos: c4-dashboard }
+          # Caddy with the built SPA.
+          - { name: web, file: infra/caddy/Dockerfile, cache: web, repos: web }
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The commit CI tested, not whatever main is by now.
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - id: tags
+        shell: bash
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          REPOS: ${{ matrix.image.repos }}
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          {
+            echo "list<<EOF"
+            for repo in $REPOS; do
+              echo "$REGISTRY/homeai/$repo:main"
+              echo "$REGISTRY/homeai/$repo:sha-$SHA"
+            done
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.image.file }}
+          push: true
+          tags: ${{ steps.tags.outputs.list }}
+          cache-from: type=gha,scope=${{ matrix.image.cache }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.cache }}
+
+      - name: Summary
+        shell: bash
+        env:
+          TAGS: ${{ steps.tags.outputs.list }}
+        run: |
+          {
+            echo "### ${{ matrix.image.name }}"
+            while read -r tag; do printf -- "- %s\n" "$tag"; done <<< "$TAGS"
+          } >> "$GITHUB_STEP_SUMMARY"
