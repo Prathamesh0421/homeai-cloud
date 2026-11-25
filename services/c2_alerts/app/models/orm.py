@@ -186,3 +186,15 @@ class Notification(Base):
     next_attempt_at: Mapped[datetime | None] = mapped_column(TZ)
     created_at: Mapped[datetime] = mapped_column(TZ, server_default=func.now())
     sent_at: Mapped[datetime | None] = mapped_column(TZ)
+
+
+class RateLimitHit(Base):
+    """Fixed-window request counters shared by every C2 copy (S-5): one row per key per window."""
+
+    __tablename__ = "rate_limit_hits"
+    __table_args__ = (Index("ix_rate_limit_window", "window_start"),)
+
+    bucket: Mapped[str] = mapped_column(String(32), primary_key=True)
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    window_start: Mapped[datetime] = mapped_column(TZ, primary_key=True)
+    hits: Mapped[int] = mapped_column(Integer)

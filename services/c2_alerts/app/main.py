@@ -20,7 +20,7 @@ from app.gateways.secrets_gateway import AlertViewKeyProvider
 from app.gateways.sns_gateway import SnsGateway
 from app.gateways.types import DependencyUnavailableError
 from app.jobs.runner import JobRunner, start_scheduler
-from app.services.rate_limit import SlidingWindowLimiter
+from app.services.rate_limit import PostgresRateLimiter
 from app.services.signed_link import SignedLinkService
 from app.settings import SERVICE_NAME, Settings, get_settings
 
@@ -94,8 +94,8 @@ def create_app(
     app.state.notifier = make_notifier(settings)
     app.state.clips = make_clip_client(settings)
     app.state.jobs = JobRunner(notifier=app.state.notifier, links=app.state.links)
-    app.state.alert_view_limiter = SlidingWindowLimiter(
-        settings.alert_view_rate_limit_per_min, window_s=60
+    app.state.alert_view_limiter = PostgresRateLimiter(
+        "alert_view", settings.alert_view_rate_limit_per_min, window_s=60
     )
     install_error_handlers(app)
     app.add_exception_handler(DependencyUnavailableError, _dependency_unavailable)

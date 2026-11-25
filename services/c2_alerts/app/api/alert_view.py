@@ -25,10 +25,14 @@ from app.services.alert_view import AlertViewService
 router = APIRouter(prefix="/api/v1/alert-view", tags=["alert view (public)"])
 
 
-def rate_limited(request: Request) -> None:
-    """60 requests/min per client IP (contracts §1.1 ``rate_limited``), before any token work."""
+def rate_limited(request: Request, session: Session = Depends(get_session)) -> None:
+    """60 requests/min per client IP (contracts §1.1 ``rate_limited``), before any token work.
+
+    Counted in Postgres, shared by all C2 copies. The client IP comes from X-Forwarded-For as
+    uvicorn resolves it (the Dockerfile's trusted proxies: Caddy, and the ALB on AWS).
+    """
     ip = request.client.host if request.client else "unknown"
-    retry_after = request.app.state.alert_view_limiter.hit(ip)
+    retry_after = request.app.state.alert_view_limiter.hit(session, ip)
     if retry_after:
         raise ApiError(
             429,

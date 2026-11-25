@@ -6,6 +6,15 @@
 # Let's Encrypt certificate automatically). API paths reverse-proxy to the owning
 # service; everything else serves the built SPA with history-API fallback.
 
+# Behind the AWS ALB (A-6), keep the client IP the ALB put in X-Forwarded-For instead of
+# replacing it with the ALB's address. Only private (VPC) peers are trusted; a client reaching
+# Caddy directly still gets its X-Forwarded-For reset to its own address.
+{
+	servers {
+		trusted_proxies static private_ranges
+	}
+}
+
 {$SITE_ADDRESS:":80"} {
 	encode gzip
 

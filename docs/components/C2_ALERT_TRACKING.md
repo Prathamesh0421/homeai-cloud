@@ -267,9 +267,15 @@ If-Match 412; alert-view 200/401/404; stats grouping. Coverage ≥ 80% on `servi
 | C2-17 | AWS: real SNS, confirm demo subscriptions, Playwright `e2e/c2-alert-lifecycle.spec.ts`, video | infra §8 |
 
 ### 8.1 Final project tasks (`docs/08_FINAL_DELIVERABLES.md`, from 21 Nov 2026)
-- **S-3** advisory lock around Alembic `upgrade` in `services/c2_alerts/alembic/env.py`.
-- **S-5** public alert-view rate limit (60/min/IP) counted in PostgreSQL (new `c2` table + migration) instead of
-  `SlidingWindowLimiter` memory; client IP from `X-Forwarded-For` behind Caddy and the ALB.
+- **S-3** ✅ advisory lock around Alembic `upgrade` in `services/c2_alerts/alembic/env.py` (session lock
+  `0x4332_0000_0000`, next to the job keys in `app/jobs/lock.py`). Evidence: `tests/db/test_migration_lock.py`;
+  3 copies migrating a fresh database at once all succeed (without the lock 2 of 3 fail, `UniqueViolation`).
+- **S-5** ✅ public alert-view rate limit (60/min/IP) counted in PostgreSQL: `PostgresRateLimiter`
+  (`app/services/rate_limit.py`), table `c2.rate_limit_hits` (migration 0004), fixed 60 s windows on the database
+  clock, the hit is committed before the token is checked, past windows swept once a minute per copy.
+  Client IP: uvicorn trusts `X-Forwarded-For` only from private addresses (Dockerfile), and Caddy keeps the ALB's
+  `X-Forwarded-For` (`trusted_proxies static private_ranges`, Caddyfile: Renuka's review). Evidence:
+  `tests/db/test_rate_limit.py`, `test_rate_limit_holds_across_two_copies` (two app instances, one count).
 - **S-6** HMAC-key cache (5 min) and C1 clip-URL cache are per copy and safe; NotificationRetry and
   ContactSubscriptionSync already take advisory locks.
 - **S-7** `scripts/perf/api_load.py` with Renuka (`/alerts/evaluate` p95 < 500 ms); **A-1** Terraform skeleton and

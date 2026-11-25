@@ -23,4 +23,7 @@ EXPOSE 8002
 
 # A failed migration stops the container (like C4) instead of serving on a schema it cannot
 # use: the health check only pings the database, so it would still report healthy.
-CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS\" = \"1\" ]; then alembic upgrade head || exit 1; fi; exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8002 --proxy-headers --forwarded-allow-ips='*'"]
+# X-Forwarded-For is trusted only from private addresses (Caddy on the compose network; the ALB
+# in the VPC), so uvicorn takes the client IP the nearest proxy saw, not one a client sent
+# (the alert-view rate limit is per IP).
+CMD ["sh", "-c", "if [ \"$RUN_MIGRATIONS\" = \"1\" ]; then alembic upgrade head || exit 1; fi; exec uvicorn --factory app.main:create_app --host 0.0.0.0 --port 8002 --proxy-headers --forwarded-allow-ips='127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16'"]
