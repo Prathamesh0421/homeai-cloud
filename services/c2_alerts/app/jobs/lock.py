@@ -14,7 +14,8 @@ from contextlib import contextmanager
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-# One fixed 64-bit key per job ("C2" + job number).
+# One fixed 64-bit key per job ("C2" + job number); 0 is Alembic (alembic/env.py, S-3).
+MIGRATION_LOCK = 0x4332_0000_0000
 RETRY_LOCK = 0x4332_0000_0001
 SYNC_LOCK = 0x4332_0000_0002
 

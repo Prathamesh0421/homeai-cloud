@@ -218,6 +218,16 @@ def test_rate_limited_per_ip(make_client, alert):
     assert int(r.headers["Retry-After"]) >= 1
 
 
+def test_rate_limit_holds_across_two_copies(make_client, alert):
+    # Two app instances (two C2 copies behind Caddy) share the count in Postgres (S-5).
+    a = make_client(alert_view_rate_limit_per_min=3)
+    b = make_client(alert_view_rate_limit_per_min=3)
+    good = token_for(a, alert.alert_id)
+    assert [c.get(f"{VIEW}/{good}").status_code for c in (a, b, a)] == [200, 200, 200]
+    assert b.get(f"{VIEW}/{good}").status_code == 429
+    assert a.get(f"{VIEW}/{good}").status_code == 429
+
+
 def test_openapi_lists_public_route(client):
     assert f"{VIEW}/{{token}}" in client.get("/api/v1/docs/c2/openapi.json").json()["paths"]
 
