@@ -1,8 +1,22 @@
-# AWS setup runbook (C4-16)
+# AWS setup runbook
+
+Two layouts live in this directory:
+
+| Layout | When | Entry |
+|---|---|---|
+| **Legacy / fallback** — single EC2 + Caddy | Nov demos; rehearsal backup if Tier 2 is down | §1–7 below (`provision.sh`) |
+| **Tier 2** — ALB + ASGs + ECR + ACM | Final presentation (2 Dec); `docs/08` A-tasks | [§ Tier 2](#tier-2--alb--asg--terraform-docs08) + `terraform/README.md` |
+
+Nothing in AWS is created except by **Mohit** (AWS lead). Rotate secrets first:
+[`ROTATE_SECRETS.md`](./ROTATE_SECRETS.md) (A-0).
+
+---
+
+# Legacy / fallback — single EC2 (C4-16)
 
 One-time provisioning + first deploy for the 11 Nov demo. Source of truth:
-`docs/03_REPO_AND_INFRA.md` §8 and `docs/07_DEMO_NOV_11.md` §5. Run this once as a
-team on **Sun 8 Nov** (~2 hours).
+`docs/03_REPO_AND_INFRA.md` §8 and `docs/07_DEMO_NOV_11.md` §5. Kept as the
+**fallback** if the ALB stack is not ready for rehearsal (08 §8).
 
 ## Prerequisites
 
@@ -63,7 +77,7 @@ RDS_ENDPOINT=<rds-endpoint>:5432 TEAM=cmpe281 \
 `render_env.sh` reads the account ID and the passwords from AWS and prints a `.env` in
 which every service connects as its own role (`c2_app`, `c2_reader`, `c4_app`, never the
 RDS master), Mongo is `mongo:27017` (the compose service), AWS_ENDPOINT_URL is unset (real
-AWS), `NOTIFIER=sns`, `DEMO_MODE=1`. Without RDS: `SKIP_RDS=1 TEAM=… make deploy-env > .env`
+AWS), `NOTIFIER=sns`, `DEMO_MODE` from the environment (default `0`; set `DEMO_MODE=1` only for the live demo — see [`ROTATE_SECRETS.md`](./ROTATE_SECRETS.md)). Without RDS: `SKIP_RDS=1 TEAM=… make deploy-env > .env`
 (Postgres is then the `postgres:5432` container).
 
 ## 4. Initialise the database (RDS only)
@@ -118,7 +132,7 @@ emails** (Sun 8, re-check Tue 10).
 - RDS stays stopped up to 7 days; resume with `aws rds start-db-instance`.
 - Tear everything down after grading.
 
-## Files in this directory
+## Files in this directory (legacy)
 
 | File | Purpose |
 |---|---|
@@ -128,3 +142,134 @@ emails** (Sun 8, re-check Tue 10).
 | `s3-lifecycle.json` | S3 lifecycle rules (tenants → IA/Glacier, backups expire). |
 | `render_env.sh` | Prints a production `.env` from the provisioned resources. |
 | `set_passwords.sh` | Sets the database roles and Mongo users to their Secrets Manager passwords (run by `make deploy`). |
+| `ROTATE_SECRETS.md` | A-0 checklist before the ALB is public. |
+| `terraform/` | Tier 2 IaC (see below). |
+
+---
+
+# Tier 2 — ALB / ASG / Terraform (`docs/08`)
+
+Scalable layout: internet-facing ALB (HTTPS) → **API ASG** (Caddy + C1/C2/C3-data/C4
+on each instance) and a separate **Worker ASG** (`c3-worker` only). Instances pull
+images from ECR; config from Secrets Manager; shared RDS / S3 / SNS from the Nov
+`provision.sh` resources. Full module docs: [`terraform/README.md`](./terraform/README.md).
+
+## Prerequisites (Tier 2)
+
+- [ ] A-0 done ([`ROTATE_SECRETS.md`](./ROTATE_SECRETS.md)).
+- [ ] Terraform ≥ 1.5 locally; Mohit AWS admin credentials.
+- [ ] `team_ssh_cidrs`, `rds_security_group_id`, `rds_endpoint` known.
+- [ ] Prefer ECR images pushed at least once (`terraform/examples/ecr-push.yml`) before
+      expecting healthy ALB targets (user-data can `--build` as a slow fallback).
+- [ ] Atlas (A-2) for Mongo when retiring the EC2-local `mongo` container — optional for
+      the first ALB bring-up if API instances still run compose `mongo`.
+
+## Apply
+
+```bash
+cd infra/aws/terraform
+cp examples/terraform.tfvars.example terraform.tfvars   # edit; do not commit
+terraform init
+terraform plan -out=tfplan
+# Costly — only Mohit, only when ready:
+terraform apply tfplan
+```
+
+Safer first pass (ECR, IAM, ALB, ACM request; **no** ASG EC2):
+
+```bash
+terraform apply -var='enable_asg=false'
+```
+
+### Free TLS path (no paid domain) — current course default
+
+DuckDNS cannot create the ACM DNS-validation CNAME, and a Route 53 / purchased
+domain costs money. **Do not enable the HTTPS listener** unless you have a real
+DNS name that can host that CNAME.
+
+| Audience | URL | TLS |
+|---|---|---|
+| Users / SPA / signed alert links | `https://homeai.duckdns.org` → legacy EIP + Caddy Let’s Encrypt | Yes (free) |
+| Scalability demo (ALB) | `http://$(terraform output -raw alb_dns_name)` once ASG targets are healthy | HTTP only |
+
+Keep `enable_https_listener=false` (default). Set
+`PUBLIC_BASE_URL=https://homeai.duckdns.org` on the legacy host via `make deploy-env`.
+In the final report “design vs deployed” note: ACM-at-ALB is the production target;
+demo uses free DuckDNS+Caddy TLS + HTTP ALB for load-balancing evidence.
+
+### Optional: ACM HTTPS (costs a domain)
+
+If you later own a DNS zone that supports CNAMEs, set `domain_name`, apply, publish
+`terraform output acm_validation_records`, then:
+
+```bash
+terraform apply -var='enable_https_listener=true' -var='enable_acm_validation_wait=true'
+```
+
+## Rolling refresh (new image / user-data)
+
+After CI pushes a new `:main` (or change `ecr_image_tag` + apply):
+
+```bash
+API_ASG=$(terraform output -raw api_asg_name)
+WORKER_ASG=$(terraform output -raw worker_asg_name)
+
+aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name "$API_ASG" \
+  --preferences MinHealthyPercentage=50,InstanceWarmup=300 \
+  --region us-west-2
+
+aws autoscaling start-instance-refresh \
+  --auto-scaling-group-name "$WORKER_ASG" \
+  --preferences MinHealthyPercentage=0,InstanceWarmup=300 \
+  --region us-west-2
+```
+
+Or bump the launch template by re-applying after a user-data change (`$Latest`).
+
+## Scale for the demo
+
+```bash
+# API: show 2 copies behind the ALB (08 cost note: raise only for demo / measurements)
+aws autoscaling set-desired-capacity --auto-scaling-group-name "$API_ASG" --desired-capacity 2
+# Workers: optional second worker under device_sim / api_load
+aws autoscaling set-desired-capacity --auto-scaling-group-name "$WORKER_ASG" --desired-capacity 2
+```
+
+Return to min cost after the session:
+
+```bash
+aws autoscaling set-desired-capacity --auto-scaling-group-name "$API_ASG" --desired-capacity 1
+aws autoscaling set-desired-capacity --auto-scaling-group-name "$WORKER_ASG" --desired-capacity 1
+```
+
+## Stop to save cost (idle days)
+
+```bash
+# Scale to zero (keeps ALB + ASG objects; no EC2 burn)
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$API_ASG" \
+  --min-size 0 --desired-capacity 0 --max-size 3
+aws autoscaling update-auto-scaling-group --auto-scaling-group-name "$WORKER_ASG" \
+  --min-size 0 --desired-capacity 0 --max-size 2
+
+# Optional: stop legacy single-EC2 + RDS as in §7 above
+```
+
+Bring back: set min/desired to 1 (or `terraform apply` to restore coded defaults).
+
+## Destroy after grading
+
+```bash
+cd infra/aws/terraform
+terraform destroy
+```
+
+This removes ALB, ASGs, Tier-2 SGs/IAM/ECR/OIDC role, ACM cert, log groups. It does
+**not** delete the Nov RDS, S3 bucket, or `homeai/*` secrets. Tear those down
+separately only after backups/dumps are safe (and after the report is submitted).
+
+## Fallback
+
+If Tier 2 is unhealthy before a rehearsal: keep DuckDNS on the **legacy EIP**, use
+§1–7 above, and show the recorded scale video / local `--scale` measurements from
+`docs/RESULTS.md` (08 §8 Mon–Tue fallback).

@@ -76,6 +76,26 @@ infra/localstack/volume/
 .localstack/
 docker-compose.override.yml
 
+# ---------- Terraform (infra/aws/terraform) ----------
+# Local state and provider plugins — never commit (docs/08 A-1).
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# Real variable values may include account-specific IDs; keep examples only.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+!**/examples/*.tfvars.example
+
+
 # ---------- Logs ----------
 logs/
 *.log

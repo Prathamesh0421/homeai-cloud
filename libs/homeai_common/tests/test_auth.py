@@ -26,7 +26,9 @@ class _StaticJwks(JwksCache):
 def keys():
     private, _public, entry = make_test_keys(kid="test-key")
     auth._default_cache = _StaticJwks(entry)
-    return private
+    auth._default_revocation_cache = None
+    yield private
+    auth._default_revocation_cache = None
 
 
 def test_verify_user_token_builds_principal(keys):
@@ -100,6 +102,54 @@ def test_revoked_jti_rejected(keys):
     with pytest.raises(HTTPException) as exc:
         verify_token(token, revoked_jtis={jti})
     assert exc.value.detail["code"] == "token_revoked"
+
+
+def test_revocation_cache_fetches_and_ttl(keys, monkeypatch):
+    from fastapi import HTTPException
+    from homeai_common.auth import configure_revocation
+
+    jti = str(uuid4())
+    token = mint_user_token(keys, kid="test-key", jti=jti)
+    calls = {"n": 0}
+
+    def fake_get(url, headers=None, params=None, timeout=None):
+        calls["n"] += 1
+
+        class _Resp:
+            def raise_for_status(self):
+                return None
+
+            def json(self):
+                return {"data": {"jti": [jti]}}
+
+        return _Resp()
+
+    monkeypatch.setattr(auth.httpx, "get", fake_get)
+    cache = configure_revocation(
+        "http://c4-test/api/v1/auth/revoked",
+        lambda: "svc-token",
+        ttl_seconds=60,
+    )
+    assert jti in cache.get()
+    assert calls["n"] == 1
+    assert jti in cache.get()  # still within TTL
+    assert calls["n"] == 1
+
+    with pytest.raises(HTTPException) as exc:
+        verify_token(token)  # uses process-wide cache
+    assert exc.value.detail["code"] == "token_revoked"
+
+    cache.invalidate()
+    assert jti in cache.get()
+    assert calls["n"] == 2
+
+
+def test_parse_revoked_payload_shapes():
+    from homeai_common.auth import _parse_revoked_payload
+
+    assert _parse_revoked_payload({"data": {"jti": ["a", "b"]}}) == {"a", "b"}
+    assert _parse_revoked_payload({"data": ["x"]}) == {"x"}
+    assert _parse_revoked_payload({"data": {}}) == set()
 
 
 def test_require_roles_dependency(keys):

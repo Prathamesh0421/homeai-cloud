@@ -1,4 +1,10 @@
-"""Alembic environment for C4. Uses the app's engine and metadata."""
+"""Alembic environment for C4. Uses the app's engine and metadata.
+
+With several c4-dashboard copies (``RUN_MIGRATIONS=1`` on each), migrations must not
+race. Before ``upgrade``, this process takes a Postgres session-level advisory lock
+on a dedicated C4 key and releases it after. Other copies block on the same lock
+until the winner finishes.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +13,7 @@ from logging.config import fileConfig
 
 from alembic import context
 from app.db.session import BASE_METADATA
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 config = context.config
 
@@ -23,6 +29,10 @@ def _database_url() -> str:
 config.set_main_option("sqlalchemy.url", _database_url().replace("%", "%%"))
 
 target_metadata = BASE_METADATA
+
+# Session-level advisory lock for Alembic (S-3). "C4" + migration slot; distinct from
+# C1 ConnectivityMonitor (0x4331…) and C2 job locks (0x4332…).
+MIGRATION_LOCK_KEY = 0x4334_0000_0001
 
 
 def run_migrations_offline() -> None:
@@ -44,11 +54,19 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata, version_table_schema="c4"
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+        # Session lock (not xact): migrations commit many times; an xact lock would
+        # drop mid-run. Blocking lock so a second copy waits instead of racing.
+        connection.execute(text("SELECT pg_advisory_lock(:k)"), {"k": MIGRATION_LOCK_KEY})
+        connection.commit()
+        try:
+            context.configure(
+                connection=connection, target_metadata=target_metadata, version_table_schema="c4"
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+        finally:
+            connection.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": MIGRATION_LOCK_KEY})
+            connection.commit()
 
 
 if context.is_offline_mode():

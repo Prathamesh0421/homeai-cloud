@@ -1,0 +1,81 @@
+# Sample workflow for docs/08 A-3 — ECR push via GitHub OIDC.
+#
+# HOW TO MERGE (Prathamesh / CI owner):
+#   1. terraform apply has created the OIDC provider + role.
+#   2. Copy this file to .github/workflows/ecr-push.yml (or merge the job into ci.yml
+#      behind workflow_dispatch / an `aws` environment).
+#   3. Set repository variable AWS_ROLE_ARN to the Terraform output
+#      github_actions_ecr_role_arn (or hardcode in the environment protection rules).
+#   4. Do NOT change the existing build-images job's push: false path — that job must
+#      stay green for PRs without AWS credentials.
+#
+# This sample is intentionally NOT under .github/workflows/ so default CI is untouched.
+
+name: ECR push (OIDC)
+
+on:
+  workflow_dispatch:
+  # Uncomment after the role ARN is configured and images are required on every main merge:
+  # push:
+  #   branches: [main]
+
+permissions:
+  contents: read
+  id-token: write   # required for OIDC → AWS
+
+concurrency:
+  group: ecr-push-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: us-west-2
+  # Map compose service / Dockerfile path → ECR repository name (homeai/<name>).
+  # c3-worker uses the same Dockerfile as c3_data; we push the digest under both names.
+
+jobs:
+  push:
+    name: Push ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    environment: aws   # optional: protect with required reviewers; matches OIDC sub condition
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: c1-iot
+            dockerfile: services/c1_iot/Dockerfile
+          - name: c2-alerts
+            dockerfile: services/c2_alerts/Dockerfile
+          - name: c3-data
+            dockerfile: services/c3_data/Dockerfile
+          - name: c3-worker
+            dockerfile: services/c3_data/Dockerfile
+          - name: c4-dashboard
+            dockerfile: services/c4_dashboard/Dockerfile
+          - name: web
+            dockerfile: infra/caddy/Dockerfile
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ steps.ecr.outputs.registry }}/homeai/${{ matrix.name }}:main
+            ${{ steps.ecr.outputs.registry }}/homeai/${{ matrix.name }}:sha-${{ github.sha }}
+          cache-from: type=gha,scope=ecr-${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=ecr-${{ matrix.name }}
