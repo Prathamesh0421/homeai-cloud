@@ -437,7 +437,7 @@ describe("AlertDetailPage", () => {
     withLink.notifications[1] = { ...withLink.notifications[1], view_link: "http://localhost:8080/alert-view/tok" };
     stubFetch({ "GET /api/v1/alerts/a1": { body: { data: withLink } } });
     renderDetail();
-    expect(await screen.findByRole("link", { name: "demo link" })).toHaveAttribute(
+    expect(await screen.findByRole("link", { name: /^Demo link: alert view for / })).toHaveAttribute(
       "href",
       "http://localhost:8080/alert-view/tok",
     );
@@ -493,5 +493,79 @@ describe("useArrivedIds (new-row highlight)", () => {
     rerender({ rows: [a], key: "resolved", ph: true });
     rerender({ rows: [b], key: "resolved", ph: false });
     expect(result.current.size).toBe(0);
+  });
+});
+
+describe("Keyboard focus (accessibility pass)", () => {
+  function renderDetail() {
+    return renderPage("/alerts/a1", <AlertDetailPage />, "/alerts/:alertId");
+  }
+
+  it("moves focus to Resolve after Acknowledge, and to the closed note after Resolve", async () => {
+    stubFetch({
+      "GET /api/v1/alerts/a1": { body: { data: detail() } },
+      "POST /api/v1/alerts/a1/acknowledge": {
+        body: { data: detail({ status: "acknowledged", allowed_actions: ["resolve", "false_positive"] }) },
+      },
+      "POST /api/v1/alerts/a1/resolve": { body: { data: detail({ status: "resolved", allowed_actions: [] }) } },
+    });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Acknowledge" }));
+    const resolve = screen.getByRole("button", { name: "Resolve" });
+    await waitFor(() => expect(resolve).toHaveFocus());
+    fireEvent.click(resolve);
+    await waitFor(() => expect(screen.getByText("This alert is closed; no further actions.")).toHaveFocus());
+  });
+
+  it("keeps Tab inside the false-positive dialog and returns focus to its opener", async () => {
+    stubFetch({ "GET /api/v1/alerts/a1": { body: { data: detail() } } });
+    renderDetail();
+    const opener = await screen.findByRole("button", { name: "Mark false positive" });
+    opener.focus();
+    fireEvent.click(opener);
+    const dialog = screen.getByRole("dialog", { name: "Mark as false positive?" });
+    expect(dialog).toHaveAccessibleDescription(/The alert closes/);
+    const box = within(dialog).getByLabelText("Reason (required)");
+    expect(box).toHaveFocus();
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    cancel.focus(); // the confirm button is disabled until there is a reason: Cancel is last
+    fireEvent.keyDown(cancel, { key: "Tab" });
+    expect(box).toHaveFocus();
+    fireEvent.keyDown(box, { key: "Tab", shiftKey: true });
+    expect(cancel).toHaveFocus();
+    fireEvent.click(cancel);
+    expect(opener).toHaveFocus();
+  });
+
+  it("focuses the recording player that replaces Play", async () => {
+    stubFetch({
+      "GET /api/v1/alerts/a1": { body: { data: detail() } },
+      "GET /api/v1/clips/m1/playback-url": {
+        body: { data: { url: "https://s3.test/m1.wav?X-Amz-Signature=x", expires_at: "2026-10-24T23:25:00Z" } },
+      },
+    });
+    renderDetail();
+    fireEvent.click(await screen.findByRole("button", { name: "Play recording" }));
+    await waitFor(() => expect(screen.getByLabelText("Alert recording")).toHaveFocus());
+  });
+
+  it("names the severity sort header and each row's View button", async () => {
+    stubFetch({
+      "GET /api/v1/alerts": { body: page([summary()]) },
+      "GET /api/v1/alert-types": { body: TYPES },
+    });
+    renderPage("/alerts", <AlertsPage />, "/alerts");
+    expect(await screen.findByRole("button", { name: "Severity" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^View Possible intrusion alert at Maple St, / })).toBeInTheDocument();
+  });
+
+  it("Clear filters moves focus to the first filter", async () => {
+    stubFetch({
+      "GET /api/v1/alerts": { body: page([summary()]) },
+      "GET /api/v1/alert-types": { body: TYPES },
+    });
+    renderPage("/alerts?severity=high", <AlertsPage />, "/alerts");
+    fireEvent.click(await screen.findByRole("button", { name: "Clear filters" }));
+    await waitFor(() => expect(screen.getByRole("combobox", { name: /^Status/ })).toHaveFocus());
   });
 });
