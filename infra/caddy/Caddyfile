@@ -15,33 +15,56 @@
 	}
 }
 
+# S-2 (docs/08 §4): each API route load-balances over every running copy of its service
+# (`docker compose ... --scale c1-iot=2`, infra/docker-compose.scale.yml); with one copy it
+# behaves like a plain reverse_proxy.
+# - `dynamic a`: the copies are looked up in Docker's DNS every 5 s, so copies that start or stop
+#   are picked up. (Active health checks do not run for dynamic upstreams.)
+# - A request that cannot reach a copy (connection refused, e.g. a stopped copy still in the
+#   5 s DNS cache) is retried on another for up to 5 s; that copy is then skipped for 10 s
+#   (passive health). GET requests are also retried if the copy drops the connection.
+# - No `unhealthy_status`: C1/C2 answer 503 by design when S3 or another component is down, and
+#   counting that would take every copy out of rotation at once.
+(api) {
+	reverse_proxy {
+		dynamic a {args[0]} {args[1]} {
+			refresh 5s
+		}
+		lb_policy least_conn
+		lb_try_duration 5s
+		lb_try_interval 250ms
+		fail_duration 10s
+		max_fails 1
+	}
+}
+
 {$SITE_ADDRESS:":80"} {
 	encode gzip
 
 	# C4 owns a couple of house sub-resources that otherwise look like C1 paths.
 	@c4houses path_regexp c4houses ^/api/v1/(houses/[^/]+/(settings|emergency-contacts)|emergency-contacts)
 	handle @c4houses {
-		reverse_proxy c4-dashboard:8004
+		import api c4-dashboard 8004
 	}
 
 	@c4 path /api/v1/auth/* /api/v1/dashboard/* /api/v1/tenants* /api/v1/users/* /.well-known/jwks.json /api/v1/docs/c4* /api/v1/health/c4
 	handle @c4 {
-		reverse_proxy c4-dashboard:8004
+		import api c4-dashboard 8004
 	}
 
 	@c1 path /api/v1/houses* /api/v1/rooms* /api/v1/feeds* /api/v1/ingest/* /api/v1/clips* /api/v1/docs/c1* /api/v1/health/c1
 	handle @c1 {
-		reverse_proxy c1-iot:8001
+		import api c1-iot 8001
 	}
 
 	@c2 path /api/v1/alerts* /api/v1/alert-rules* /api/v1/alert-types* /api/v1/alert-view/* /api/v1/docs/c2* /api/v1/health/c2
 	handle @c2 {
-		reverse_proxy c2-alerts:8002
+		import api c2-alerts 8002
 	}
 
 	@c3 path /api/v1/inference/* /api/v1/media-events/* /api/v1/models* /api/v1/records/* /api/v1/detections/* /api/v1/data-dictionary* /api/v1/integrity-* /api/v1/activity-patterns* /api/v1/docs/c3* /api/v1/health/c3
 	handle @c3 {
-		reverse_proxy c3-data:8003
+		import api c3-data 8003
 	}
 
 	# Everything else is the SPA.
