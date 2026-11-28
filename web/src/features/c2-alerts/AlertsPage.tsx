@@ -121,6 +121,10 @@ export default function AlertsPage() {
     placeholderData: keepPreviousData,
   });
   const types = useQuery({ queryKey: c2Keys.alertTypes(), queryFn: listAlertTypes, staleTime: 3_600_000 });
+  // Keyboard focus for controls that disappear when used (Dismiss, Clear): the heading or the
+  // first filter takes it instead of <body>.
+  const heading = useRef<HTMLHeadingElement>(null);
+  const filterBar = useRef<HTMLDivElement>(null);
   const { fresh, dismiss } = useNewCriticals(
     alerts.data?.data,
     JSON.stringify(filters),
@@ -167,7 +171,7 @@ export default function AlertsPage() {
   const columns: Column<AlertSummary>[] = [
     {
       key: "severity",
-      header: "",
+      header: <span className="sr-only">Severity</span>, // sortable: the header is a named button
       render: (a) => (
         <span
           className={`inline-block h-9 w-1 rounded-full ${SEVERITY_BAR[a.severity]}`}
@@ -235,6 +239,7 @@ export default function AlertsPage() {
             <Button
               variant="ghost"
               size="sm"
+              aria-label={`View ${a.alert_type_name} alert${a.house_name ? ` at ${a.house_name}` : ""}, ${relativeTime(a.triggered_at)}`}
               onClick={(e) => {
                 e.stopPropagation();
                 navigate(`/alerts/${a.alert_id}`);
@@ -250,7 +255,9 @@ export default function AlertsPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
-        <h1 className="text-2xl font-semibold tracking-tight text-ink">Alerts</h1>
+        <h1 ref={heading} tabIndex={-1} className="text-2xl font-semibold tracking-tight text-ink focus:outline-none">
+          Alerts
+        </h1>
         {/* Ticker is not aria-live (would announce every second). "Refreshing…" is live;
             new critical alerts use the role="alert" banner below. */}
         <span className="inline-flex items-center gap-1.5 text-xs text-muted">
@@ -287,7 +294,14 @@ export default function AlertsPage() {
             >
               View
             </button>
-            <button type="button" className="text-xs underline" onClick={dismiss}>
+            <button
+              type="button"
+              className="text-xs underline"
+              onClick={() => {
+                dismiss();
+                heading.current?.focus();
+              }}
+            >
               Dismiss
             </button>
           </span>
@@ -295,7 +309,7 @@ export default function AlertsPage() {
       )}
 
       {/* Filters as chip-style selects */}
-      <div className="flex flex-wrap items-center gap-2">
+      <div ref={filterBar} className="flex flex-wrap items-center gap-2">
         <FilterChip
           label="Status"
           value={params.get("status") ?? ""}
@@ -341,10 +355,13 @@ export default function AlertsPage() {
         {(params.get("status") || params.get("severity") || params.get("type") || params.get("house") || params.get("from") || params.get("to")) && (
           <button
             type="button"
-            onClick={() => setParams(new URLSearchParams(), { replace: true })}
+            onClick={() => {
+              setParams(new URLSearchParams(), { replace: true });
+              filterBar.current?.querySelector<HTMLElement>("select, input")?.focus();
+            }}
             className="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs text-muted hover:bg-surface-2 hover:text-ink"
           >
-            <X className="h-3.5 w-3.5" /> Clear
+            <X className="h-3.5 w-3.5" aria-hidden="true" /> Clear filters
           </button>
         )}
       </div>
@@ -406,7 +423,8 @@ function FilterChip({
   type?: "date";
 }) {
   const chipCls =
-    "inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-xs text-ink";
+    "inline-flex items-center gap-1.5 rounded-md border border-border-strong bg-surface px-2.5 py-1.5 text-xs text-ink focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-1";
+  // The select/input inside drops its own outline; the chip shows the focus ring instead.
   const active = Boolean(value);
   return (
     <label className={chipCls}>

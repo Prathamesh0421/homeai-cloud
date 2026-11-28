@@ -207,7 +207,8 @@ export default function RulesPage() {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <span tabIndex={0} className="inline-block">
+                {/* Focusable only while the button is disabled, so the tooltip still explains why. */}
+                <span tabIndex={!filters.tenantId ? 0 : undefined} className="inline-block">
                   <Button
                     variant="secondary"
                     disabled={!filters.tenantId || defaults.isPending}
@@ -359,16 +360,28 @@ export default function RulesPage() {
               <section key={tenantId} className="overflow-hidden rounded-lg border border-border bg-surface shadow-card">
                 <button
                   type="button"
+                  aria-expanded={!isCollapsed}
                   onClick={() => toggleCollapse(tenantId)}
                   className="flex w-full items-center gap-2 border-b border-border bg-surface-2 px-3 py-2 text-left text-sm font-medium text-ink hover:bg-surface-2"
                 >
-                  {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                  {isCollapsed ? (
+                    <ChevronRight className="h-4 w-4" aria-hidden="true" />
+                  ) : (
+                    <ChevronDown className="h-4 w-4" aria-hidden="true" />
+                  )}
                   <span className="flex-1">{tenantName(tenantId)}</span>
                   <span className="tnum text-xs text-muted">{tenantRules.length} rule{tenantRules.length === 1 ? "" : "s"}</span>
                 </button>
                 {!isCollapsed && (
                   <ul className="divide-y divide-border">
-                    {tenantRules.map((r) => (
+                    {tenantRules.map((r) => {
+                      // Names each row's Edit and switch: a page has one of each per rule.
+                      const where =
+                        r.scope === "tenant_default"
+                          ? "tenant default"
+                          : `${houseName(r.house_id ?? "")}, ${r.room_id ? roomName(r.room_id) : "whole house"}`;
+                      const ruleName = `${r.alert_type_name} (${where})`;
+                      return (
                       <li
                         key={r.rule_id}
                         className="grid grid-cols-12 items-center gap-2 px-3 py-2.5 text-sm hover:bg-surface-2"
@@ -394,18 +407,24 @@ export default function RulesPage() {
                         <span
                           className={`${anyFalsePos ? "col-span-2" : "col-span-3"} flex items-center justify-end gap-2`}
                         >
-                          <Button variant="ghost" size="sm" onClick={() => setEditing({ mode: "edit", rule: r })}>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`Edit rule: ${ruleName}`}
+                            onClick={() => setEditing({ mode: "edit", rule: r })}
+                          >
                             Edit
                           </Button>
                           <Switch
                             checked={r.is_enabled}
                             disabled={toggle.isPending}
                             onCheckedChange={() => (r.is_enabled ? setDisabling(r) : toggle.mutate(r))}
-                            aria-label={r.is_enabled ? "Disable rule" : "Enable rule"}
+                            aria-label={`Rule enabled: ${ruleName}`}
                           />
                         </span>
                       </li>
-                    ))}
+                      );
+                    })}
                   </ul>
                 )}
               </section>

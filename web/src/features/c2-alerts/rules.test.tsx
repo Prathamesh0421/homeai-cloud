@@ -168,11 +168,21 @@ describe("RulesPage", () => {
     expect(within(rows[0]).getByText("Tenant default")).toBeInTheDocument();
     expect(within(rows[0]).getByText("default")).toBeInTheDocument(); // severity from the type
     expect(within(rows[0]).getByText("55%")).toBeInTheDocument();
-    expect(within(rows[0]).getByRole("switch", { name: "Disable rule" })).toBeChecked();
+    expect(within(rows[0]).getByRole("switch", { name: /^Rule enabled: / })).toBeChecked();
     expect(await within(rows[1]).findByText("Maple St · Bathroom")).toBeInTheDocument(); // names from C1
     expect(within(rows[1]).getByText("Fall indicator")).toBeInTheDocument();
-    expect(within(rows[1]).getByRole("switch", { name: "Enable rule" })).not.toBeChecked();
+    expect(within(rows[1]).getByRole("switch", { name: /^Rule enabled: / })).not.toBeChecked();
     expect(within(rows[1]).getByText("2")).toBeInTheDocument();
+  });
+
+  it("names each row's Edit and switch after its rule; tenant groups say if they are expanded", async () => {
+    routes({}, [rule(), rule({ rule_id: "r2", scope: "house", house_id: HOUSE, room_id: BATH, alert_type_name: "Possible fall" })]);
+    renderRules();
+    expect(await screen.findByRole("button", { name: "Edit rule: Possible intrusion (tenant default)" })).toBeInTheDocument();
+    expect(await screen.findByRole("switch", { name: "Rule enabled: Possible fall (Maple St, Bathroom)" })).toBeInTheDocument();
+    const group = screen.getByRole("button", { expanded: true });
+    fireEvent.click(group);
+    expect(group).toHaveAttribute("aria-expanded", "false");
   });
 
   it("filters by tenant, type and state", async () => {
@@ -278,7 +288,7 @@ describe("RulesPage", () => {
     });
     renderRules();
     // Turning the enabled switch off asks for confirmation first.
-    fireEvent.click(await screen.findByRole("switch", { name: "Disable rule" }));
+    fireEvent.click(await screen.findByRole("switch", { name: /^Rule enabled: / }));
     const dialog = await screen.findByRole("dialog");
     expect(dialog).toHaveTextContent("Disable this rule?");
     fireEvent.click(within(dialog).getByRole("button", { name: "Disable" }));
@@ -295,7 +305,7 @@ describe("RulesPage", () => {
       },
     });
     renderRules();
-    fireEvent.click(await screen.findByRole("switch", { name: "Disable rule" }));
+    fireEvent.click(await screen.findByRole("switch", { name: /^Rule enabled: / }));
     fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Disable" }));
     expect(await screen.findByText("This rule was changed by someone else; reloaded the list.")).toBeInTheDocument();
     await waitFor(() => expect(calls.filter((c) => c.url.startsWith("/api/v1/alert-rules?")).length).toBe(2));
@@ -368,7 +378,7 @@ describe("RuleForm", () => {
     const gone = "33333333-0000-0000-0000-00000000a1ff";
     routes({}, [rule({ scope: "house", house_id: HOUSE, room_id: gone, alert_type_name: "Possible fall" })]);
     renderRules();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Edit rule: / }));
     expect(await form().findByText("Maple St · Acme Care · Possible fall")).toBeInTheDocument();
     const room = form().getByLabelText(/^Room/);
     await waitFor(() => expect(room).toHaveValue(gone));
@@ -399,6 +409,11 @@ describe("RuleForm", () => {
     expect(screen.getByText("Choose an alert type")).toBeInTheDocument();
     expect(screen.getByText("Pick at least one label")).toBeInTheDocument();
     expect(calls.some((c) => c.method === "POST")).toBe(false);
+    // Keyboard and screen readers: the first invalid field takes focus and names its error.
+    const house = form().getByLabelText("House", { exact: true });
+    await waitFor(() => expect(house).toHaveFocus());
+    expect(house).toHaveAttribute("aria-invalid", "true");
+    expect(house).toHaveAccessibleDescription("Choose a house");
   });
 
   it("shows the server's 422 next to the field", async () => {
@@ -421,6 +436,8 @@ describe("RuleForm", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create rule" }));
     expect(await screen.findByText("room does not belong to the house")).toBeInTheDocument();
     expect(screen.getByText("New alert rule")).toBeInTheDocument(); // stays open
+    await waitFor(() => expect(form().getByLabelText(/^Room/)).toHaveFocus());
+    expect(form().getByLabelText(/^Room/)).toHaveAccessibleDescription("room does not belong to the house");
   });
 
   it("toasts a duplicate (409) and reloads the list", async () => {
@@ -446,7 +463,7 @@ describe("RuleForm", () => {
       [existing],
     );
     renderRules();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Edit rule: / }));
     expect(screen.getByText("Edit rule: Possible intrusion")).toBeInTheDocument();
     fireEvent.change(form().getByLabelText("Severity"), { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -463,7 +480,7 @@ describe("RuleForm", () => {
       [roomRule],
     );
     renderRules();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Edit rule: / }));
     fireEvent.change(form().getByLabelText("Minimum confidence (0–1)"), { target: { value: "0.75" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("Rule saved");
@@ -473,7 +490,7 @@ describe("RuleForm", () => {
   it("closes without a request when nothing changed", async () => {
     const { calls } = routes();
     renderRules();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Edit rule: / }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(screen.queryByText(/^Edit rule:/)).not.toBeInTheDocument());
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
@@ -488,7 +505,7 @@ describe("RuleForm", () => {
       "GET /api/v1/alert-rules/r0000000-0000-4000-8000-000000000001": { status: 503, body: { error: { code: "x", message: "x" } } },
     });
     renderRules();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Edit rule: / }));
     fireEvent.click(form().getByRole("checkbox", { name: "Speech" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/Close the form and open it again/)).toBeInTheDocument();
@@ -509,7 +526,7 @@ describe("RuleForm", () => {
       [rule({ version: 5 })],
     );
     renderRules();
-    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Edit rule: / }));
     fireEvent.click(form().getByRole("checkbox", { name: "Speech" })); // a change to save
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText(/changed by someone else. Reloaded the latest version/)).toBeInTheDocument();

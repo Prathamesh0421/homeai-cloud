@@ -115,7 +115,7 @@ everything when idle, destroy after grading (`06` §6).
 | I-8 worker scale | Renuka | to do (with S-7) |
 | E2E-1 test + `web/e2e/e2e-intrusion.spec.ts` | all (C4 leads the UI spec) | to do |
 | Playwright `c1-feed-setup`, `c3-model-activate`, `c4-login-settings` | Ekant, Renuka, Mohit | `c1-feed-setup` done (C1-14); others to do (`c2-alert-lifecycle` done) |
-| Accessibility pass (keyboard-only) per page | each owner | C1 pages done (focus into/out of forms, dialog focus trap, sortable headers, labelled Play); others to do |
+| Accessibility pass (keyboard-only) per page | each owner | C1 pages done (focus into/out of forms, dialog focus trap, sortable headers, labelled Play); C2 pages done (focus after alert actions, false-positive dialog trap, named row controls, visible filter focus, field errors announced and focused); C3/C4 to do |
 | README: architecture, setup, demo accounts, dataset credits (ESC-50, YAMNet/AudioSet) | Mohit | partly done |
 | Backups: restore drill on AWS | Renuka | to do |
 

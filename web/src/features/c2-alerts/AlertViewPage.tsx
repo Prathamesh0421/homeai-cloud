@@ -87,7 +87,10 @@ export default function AlertViewPage() {
       <p className="text-sm text-ink">
         {where || "Location unavailable"} · <time dateTime={a.triggered_at}>{formatWhen(a.triggered_at)}</time>
       </p>
-      <p className="text-sm text-muted">{STATUS_NOTE[a.status]}</p>
+      {/* Live: the page refreshes every 30 s, so a contact hears when someone acknowledges. */}
+      <p aria-live="polite" className="text-sm text-muted">
+        {STATUS_NOTE[a.status]}
+      </p>
 
       <div
         role="note"

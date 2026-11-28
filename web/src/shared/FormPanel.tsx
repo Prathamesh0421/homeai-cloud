@@ -73,7 +73,12 @@ export function Field({ label, name, error, children }: FieldProps) {
         {label}
       </label>
       <div className="mt-1">{children}</div>
-      {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+      {/* The id lets the control point at its error (aria-describedby="<name>-error"). */}
+      {error && (
+        <p id={`${name}-error`} className="mt-1 text-xs text-danger">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

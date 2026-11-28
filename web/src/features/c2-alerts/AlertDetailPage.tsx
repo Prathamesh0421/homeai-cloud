@@ -1,6 +1,6 @@
 /** Alert Detail (/alerts/:alertId): evidence, timeline, contacts notified, lifecycle actions. */
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { alertAction, c2Keys, getAlert, type AlertAction, type AlertDetail } from "../../api/c2";
@@ -60,6 +60,11 @@ export default function AlertDetailPage() {
   const { push } = useToasts();
   const [note, setNote] = useState("");
   const [confirmFp, setConfirmFp] = useState(false);
+  // Keyboard focus after an action: the pressed button is disabled (or gone) afterwards, so
+  // focus would fall to <body>. Acknowledge moves it to Resolve; closing the alert to the note.
+  const [focusAfter, setFocusAfter] = useState<"resolve" | "closed" | null>(null);
+  const resolveWrap = useRef<HTMLSpanElement>(null); // the shared Button takes no ref
+  const closedNote = useRef<HTMLParagraphElement>(null);
 
   const alert = useQuery({ queryKey: c2Keys.alert(alertId), queryFn: () => getAlert(alertId) });
 
@@ -71,6 +76,7 @@ export default function AlertDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["c2", "alerts"] });
       setNote("");
       setConfirmFp(false);
+      setFocusAfter(action === "acknowledge" ? "resolve" : "closed");
       push({ tone: "success", message: ACTION_DONE[action] });
     },
     onError: (error) => {
@@ -84,6 +90,14 @@ export default function AlertDetailPage() {
       }
     },
   });
+
+  useEffect(() => {
+    // Wait until the mutation has settled: the buttons stay disabled while it is pending.
+    if (focusAfter === null || act.isPending) return;
+    if (focusAfter === "resolve") resolveWrap.current?.querySelector("button")?.focus();
+    else closedNote.current?.focus();
+    setFocusAfter(null);
+  }, [focusAfter, alert.data, act.isPending]);
 
   if (alert.isPending) return <div className="py-8 text-center text-sm text-muted">Loading alert…</div>;
   if (alert.isError) {
@@ -171,7 +185,13 @@ export default function AlertDetailPage() {
                   <td className="py-1.5 text-ink">
                     {n.channel === "in_app" ? "In-app alert list" : n.recipient}
                     {n.view_link && (
-                      <a href={n.view_link} className="ml-2 text-xs text-accent underline" target="_blank" rel="noreferrer">
+                      <a
+                        href={n.view_link}
+                        className="ml-2 text-xs text-accent underline"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Demo link: alert view for ${n.recipient ?? "this contact"} (opens in a new tab)`}
+                      >
                         demo link
                       </a>
                     )}
@@ -195,7 +215,9 @@ export default function AlertDetailPage() {
 
       <Section title="Actions">
         {closed ? (
-          <p className="text-sm text-muted">This alert is closed; no further actions.</p>
+          <p ref={closedNote} tabIndex={-1} className="text-sm text-muted focus:outline-none">
+            This alert is closed; no further actions.
+          </p>
         ) : (
           <div className="space-y-3">
             <div>
@@ -218,13 +240,15 @@ export default function AlertDetailPage() {
               >
                 Acknowledge
               </Button>
-              <Button
-                variant="secondary"
-                disabled={!can("resolve")}
-                onClick={() => act.mutate({ action: "resolve", text: note })}
-              >
-                Resolve
-              </Button>
+              <span ref={resolveWrap} className="contents">
+                <Button
+                  variant="secondary"
+                  disabled={!can("resolve")}
+                  onClick={() => act.mutate({ action: "resolve", text: note })}
+                >
+                  Resolve
+                </Button>
+              </span>
               <Button variant="danger" disabled={!can("false_positive")} onClick={() => setConfirmFp(true)}>
                 Mark false positive
               </Button>

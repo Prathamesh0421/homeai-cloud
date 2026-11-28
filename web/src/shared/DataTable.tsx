@@ -4,7 +4,8 @@ import { useState, type ReactNode } from "react";
 
 export interface Column<T> {
   key: string;
-  header: string;
+  /** Text, or e.g. a visually hidden name for an icon-only column (a sortable header is a button). */
+  header: ReactNode;
   render: (row: T) => ReactNode;
   sortValue?: (row: T) => string | number;
   className?: string;

@@ -1,6 +1,6 @@
 /** Create / edit an alert rule (cloud_staff). Inline 422 errors, 409 duplicate, 412 stale version. */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import {
   HOME_LABELS,
@@ -98,6 +98,17 @@ export interface RuleFormProps {
   onConflict: () => void;
 }
 
+/** Form field -> control id, in the order the fields appear (for focusing the first error). */
+const FIELD_IDS: Record<string, string> = {
+  tenant_id: "rule-tenant",
+  house_id: "rule-house",
+  alert_type_code: "rule-type",
+  trigger_labels: "rule-labels",
+  min_confidence: "rule-confidence",
+  room_id: "rule-room",
+  severity: "rule-severity",
+};
+
 export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCancel, onConflict }: RuleFormProps) {
   const editing = rule !== undefined;
   const { push } = useToasts();
@@ -119,6 +130,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
   const [version, setVersion] = useState(rule?.version ?? 0);
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
   const [serverErrors, setServerErrors] = useState<Record<string, string[]>>({});
+  const [focusError, setFocusError] = useState(0); // bumped after a save with field errors
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) =>
     setForm((cur) => ({ ...cur, [key]: value }));
@@ -181,6 +193,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
       }
       if (error.status === 422) {
         setServerErrors(fieldErrors(error.details));
+        setFocusError((n) => n + 1);
         return;
       }
       if (error.status === 409) {
@@ -210,9 +223,21 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
     setClientErrors(errors);
     setServerErrors({});
     if (Object.keys(errors).length === 0) save.mutate(form);
+    else setFocusError((n) => n + 1);
   }
 
   const error = (field: string) => clientErrors[field] ?? serverErrors[field]?.join("; ");
+  // Screen readers hear a field's error with the field; the first invalid field gets focus.
+  const invalid = (field: string) =>
+    error(field)
+      ? { "aria-invalid": true as const, "aria-describedby": `${FIELD_IDS[field]}-error` }
+      : {};
+  useEffect(() => {
+    if (focusError === 0) return;
+    const first = Object.keys(FIELD_IDS).find((f) => clientErrors[f] ?? serverErrors[f]);
+    const el = first ? document.getElementById(FIELD_IDS[first]) : null;
+    (el?.matches("input, select") ? el : el?.querySelector<HTMLElement>("input"))?.focus();
+  }, [focusError]); // eslint-disable-line react-hooks/exhaustive-deps -- once per failed save
   const typeDefault = types.find((t) => t.code === form.alertTypeCode)?.default_min_confidence;
 
   return (
@@ -260,6 +285,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         <Field label="Tenant" name="rule-tenant" error={error("tenant_id")}>
           <select
             id="rule-tenant"
+            {...invalid("tenant_id")}
             className={inputClass}
             value={form.tenantId}
             onChange={(e) => set("tenantId", e.target.value)}
@@ -278,6 +304,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         <Field label="House id" name="rule-house" error={error("house_id")}>
           <input
             id="rule-house"
+            {...invalid("house_id")}
             className={inputClass}
             value={form.houseId}
             onChange={(e) => setForm((cur) => ({ ...cur, houseId: e.target.value, roomId: "" }))}
@@ -289,6 +316,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         <Field label="House" name="rule-house" error={error("house_id")}>
           <select
             id="rule-house"
+            {...invalid("house_id")}
             className={inputClass}
             value={form.houseId}
             disabled={houses.isPending}
@@ -314,6 +342,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         <Field label="Alert type" name="rule-type" error={error("alert_type_code")}>
           <select
             id="rule-type"
+            {...invalid("alert_type_code")}
             className={inputClass}
             value={form.alertTypeCode}
             onChange={(e) => chooseType(e.target.value)}
@@ -329,7 +358,13 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
       )}
 
       <Field label="Trigger labels" name="rule-labels" error={error("trigger_labels")}>
-        <div id="rule-labels" className="flex flex-wrap gap-3 text-sm">
+        <div
+          id="rule-labels"
+          role="group"
+          aria-label="Trigger labels"
+          {...invalid("trigger_labels")}
+          className="flex flex-wrap gap-3 text-sm"
+        >
           {HOME_LABELS.map((label) => (
             <label key={label}>
               <input
@@ -351,6 +386,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
       <Field label="Minimum confidence (0–1)" name="rule-confidence" error={error("min_confidence")}>
         <input
           id="rule-confidence"
+          {...invalid("min_confidence")}
           className={inputClass}
           inputMode="decimal"
           value={form.minConfidence}
@@ -363,6 +399,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         <Field label="Room id (optional: only this room)" name="rule-room" error={error("room_id")}>
           <input
             id="rule-room"
+            {...invalid("room_id")}
             className={inputClass}
             value={form.roomId}
             onChange={(e) => set("roomId", e.target.value)}
@@ -374,6 +411,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
         <Field label="Room (optional: only this room)" name="rule-room" error={error("room_id")}>
           <select
             id="rule-room"
+            {...invalid("room_id")}
             className={inputClass}
             value={form.roomId}
             disabled={!rooms.isSuccess}
@@ -396,6 +434,7 @@ export function RuleForm({ rule, tenants, types, defaultTenantId, onSaved, onCan
       <Field label="Severity" name="rule-severity" error={error("severity")}>
         <select
           id="rule-severity"
+          {...invalid("severity")}
           className={inputClass}
           value={form.severity}
           onChange={(e) => set("severity", e.target.value as Severity | "")}

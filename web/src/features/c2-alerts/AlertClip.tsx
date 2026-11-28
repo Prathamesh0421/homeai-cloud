@@ -1,6 +1,6 @@
 /** The alert's recording from C1 (C2-11): a fresh 15-minute presigned URL when Play is pressed. */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { getClipUrl } from "../../api/c2";
 import { ApiError } from "../../api/http";
 import { Button } from "@/components/ui/button";
@@ -15,8 +15,13 @@ type State =
 
 export function AlertClip({ mediaId }: { mediaId: string }) {
   const [state, setState] = useState<State>({ kind: "idle" });
+  const player = useRef<HTMLMediaElement | null>(null);
 
   useEffect(() => setState({ kind: "idle" }), [mediaId]); // another alert in the drawer
+  // The player replaces the Play button, so it takes over the keyboard focus.
+  useEffect(() => {
+    if (state.kind === "ready") player.current?.focus();
+  }, [state.kind]);
 
   async function play() {
     setState({ kind: "loading" });
@@ -33,6 +38,10 @@ export function AlertClip({ mediaId }: { mediaId: string }) {
     const Player = isAudioClip(state.url) ? "audio" : "video"; // C1 stores audio or video clips
     return (
       <Player
+        ref={(el: HTMLMediaElement | null) => {
+          player.current = el;
+        }}
+        tabIndex={0}
         src={state.url}
         controls
         autoPlay
