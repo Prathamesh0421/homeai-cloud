@@ -11,11 +11,18 @@ WORKDIR /app
 # System packages: ffmpeg decodes clips to 16 kHz mono; libsndfile backs soundfile;
 # postgresql-client (pg_dump/pg_restore) and mongodb-database-tools (mongodump/mongorestore)
 # back the nightly backup/restore job (C3-14). mongodb-database-tools is not in the Debian repos,
-# so install the official .deb (amd64).
+# so install the official .deb for the build's CPU: debian12 on amd64 (EC2, CI); on arm64 (Apple
+# Silicon laptops) MongoDB publishes no debian12 build, so the ubuntu2204 one (Go binaries, needs
+# only glibc and krb5, both in Debian 12).
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ffmpeg libsndfile1 postgresql-client ca-certificates wget \
-    && wget -q https://fastdl.mongodb.org/tools/db/mongodb-database-tools-debian12-x86_64-100.10.0.deb \
+    && case "$(dpkg --print-architecture)" in \
+         amd64) MDB_TOOLS=debian12-x86_64 ;; \
+         arm64) MDB_TOOLS=ubuntu2204-arm64 ;; \
+         *) echo "no mongodb-database-tools build for $(dpkg --print-architecture)" >&2; exit 1 ;; \
+       esac \
+    && wget -q "https://fastdl.mongodb.org/tools/db/mongodb-database-tools-${MDB_TOOLS}-100.10.0.deb" \
         -O /tmp/mongodb-database-tools.deb \
     && apt-get install -y --no-install-recommends /tmp/mongodb-database-tools.deb \
     && rm -f /tmp/mongodb-database-tools.deb \

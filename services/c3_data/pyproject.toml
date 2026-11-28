@@ -23,7 +23,10 @@ dependencies = [
   "python-json-logger>=2.0",
   "python-multipart>=0.0.9",
   "APScheduler>=3.10,<4",
-  "tensorflow-cpu>=2.15,<3",
+  # tensorflow-cpu has no arm64 wheels; plain tensorflow does (CPU-only on Linux arm64, Apple
+  # Silicon). amd64 (EC2, CI) keeps tensorflow-cpu.
+  "tensorflow-cpu>=2.15,<3; platform_machine != 'aarch64' and platform_machine != 'arm64'",
+  "tensorflow>=2.15,<3; platform_machine == 'aarch64' or platform_machine == 'arm64'",
   "tensorflow-hub>=0.16",
   "numpy>=1.24",
   "soundfile>=0.12",

@@ -106,9 +106,9 @@ everything when idle, destroy after grading (`06` §6).
 ## 6. Integration, E2E and polish (unchanged scope, owners)
 | Item | Owner | Status 21 Nov |
 |---|---|---|
-| I-1 C1 → C3 | Ekant + Renuka | to automate in `tests/integration/` |
+| I-1 C1 → C3 | Ekant + Renuka | done (`tests/integration/test_c1_clips.py`, green locally) |
 | I-2, I-3 C3/C4 → C2 | Prathamesh | done (`tests/integration/test_c2_detections.py`, green on EC2) |
-| I-4 C2 → C1 clip | Prathamesh + Ekant | to do |
+| I-4 C2 → C1 clip | Prathamesh + Ekant | done (`tests/integration/test_c1_clips.py`, green locally) |
 | I-5 dashboards | Mohit | to do |
 | I-6 tenant isolation | all | to do |
 | I-7 revocation | Mohit | to do |
