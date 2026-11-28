@@ -1,0 +1,20 @@
+# S-1 (docs/08_FINAL_DELIVERABLES.md §4): several copies of every app service on one host.
+#
+#   docker compose -f infra/docker-compose.yml -f infra/docker-compose.scale.yml \
+#     --profile c1 --profile c3 --profile gateway up -d --build \
+#     --scale c1-iot=2 --scale c2-alerts=2 --scale c3-data=2 --scale c3-worker=2 --scale c4-dashboard=2
+#
+# The dev file publishes each API on a fixed host port (8001-8004, used by Vite's dev proxy), so a
+# second copy could not bind it and `--scale` failed. This override drops those host ports: clients
+# go through Caddy on :8080, which load-balances over the copies (infra/caddy/Caddyfile, S-2).
+# Service-to-service calls (e.g. C2 -> C1 at http://c1-iot:8001) use Docker's DNS, which returns
+# every running copy. Infra services (postgres, mongo, localstack) keep their ports and stay single.
+services:
+  c1-iot:
+    ports: !reset []
+  c2-alerts:
+    ports: !reset []
+  c3-data:
+    ports: !reset []
+  c4-dashboard:
+    ports: !reset []
