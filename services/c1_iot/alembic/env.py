@@ -5,6 +5,7 @@ from __future__ import annotations
 from logging.config import fileConfig
 
 from alembic import context
+from app.jobs.lock import MIGRATION_LOCK
 from app.models import SCHEMA, Base
 from app.settings import Settings
 from sqlalchemy import Connection, engine_from_config, pool, text
@@ -92,7 +93,18 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        _run(connection)
+        # Every C1 copy runs `alembic upgrade head` on start (RUN_MIGRATIONS=1), so copies queue
+        # on a session advisory lock: the first migrates, the rest then find the schema at head.
+        # A session lock, because the schema is created and committed before the migrations run;
+        # it goes with the connection if the process dies. (A given connection is the caller's.)
+        connection.execute(text("SELECT pg_advisory_lock(:k)"), {"k": MIGRATION_LOCK})
+        connection.commit()
+        try:
+            _run(connection)
+        finally:
+            connection.rollback()
+            connection.execute(text("SELECT pg_advisory_unlock(:k)"), {"k": MIGRATION_LOCK})
+            connection.commit()
 
 
 if context.is_offline_mode():
