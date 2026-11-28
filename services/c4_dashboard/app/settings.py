@@ -26,6 +26,9 @@ class Settings(BaseServiceSettings):
     jwt_user_ttl_seconds: int = 3600
     jwt_service_ttl_seconds: int = 900
 
+    # Own service client for C1/C2/C3 stats (secret: SERVICE_CLIENT_SECRET_C4)
+    service_client_id: str | None = "c4-dashboard"
+
     # Inter-service URLs
     c1_base_url: str = "http://c1-iot:8001"
     c2_base_url: str = "http://c2-alerts:8002"

@@ -75,11 +75,13 @@ def test_i5_summary_kpis_match_upstream_stats(stack):
     assert "c2" not in summary["meta"]["unavailable"]
     assert "c3" not in summary["meta"]["unavailable"]
 
+    # C1 /feeds/stats is staff or scope feeds:read only (C4 reads it with its c4-dashboard
+    # service token), so the reference count is taken as cloud staff, narrowed to Maple.
     feeds = stack.call(
         "GET",
         "/api/v1/feeds/stats",
-        token,
-        params={"house_id": MAPLE},
+        stack.user_token(OPS),
+        params={"tenant_id": seed_ids.tenant_of(MAPLE), "house_id": MAPLE},
     )["data"]
     assert kpis["houses"] == int(feeds.get("houses") or 0)
     assert kpis["feeds_total"] == int(feeds.get("total") or 0)
