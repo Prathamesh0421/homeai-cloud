@@ -59,14 +59,27 @@ export function DataTable<T>({ columns, rows, rowKey, onRowClick, empty, rowClas
             {columns.map((col) => (
               <th
                 key={col.key}
-                className={`px-4 py-3 font-medium ${col.sortValue ? "cursor-pointer select-none hover:text-ink" : ""} ${col.className ?? ""}`}
-                onClick={() => col.sortValue && toggleSort(col.key)}
+                className={`px-4 py-3 font-medium ${col.className ?? ""}`}
+                aria-sort={
+                  col.sortValue ? (sortKey === col.key ? (sortDir === "asc" ? "ascending" : "descending") : "none") : undefined
+                }
               >
-                {col.header}
-                {sortKey === col.key && (
-                  <span className="ml-1 text-accent" aria-hidden="true">
-                    {sortDir === "asc" ? "▲" : "▼"}
-                  </span>
+                {col.sortValue ? (
+                  // A real button so keyboard users can sort too (Tab, then Enter or Space).
+                  <button
+                    type="button"
+                    className="cursor-pointer select-none rounded uppercase tracking-wide hover:text-ink"
+                    onClick={() => toggleSort(col.key)}
+                  >
+                    {col.header}
+                    {sortKey === col.key && (
+                      <span className="ml-1 text-accent" aria-hidden="true">
+                        {sortDir === "asc" ? "▲" : "▼"}
+                      </span>
+                    )}
+                  </button>
+                ) : (
+                  col.header
                 )}
               </th>
             ))}

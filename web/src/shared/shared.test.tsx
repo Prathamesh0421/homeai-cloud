@@ -6,6 +6,8 @@ import { SortableList, type SortableItem } from "./SortableList";
 import { SeverityBadge } from "./SeverityBadge";
 import { fieldErrors, FormPanel } from "./FormPanel";
 import { ToastProvider, ToastViewport, useToasts } from "./Toasts";
+import { DataTable } from "./DataTable";
+import { ConfirmDialog } from "./ConfirmDialog";
 
 describe("SeverityBadge", () => {
   it("renders the icon and the word for each severity", () => {
@@ -105,5 +107,73 @@ describe("ToastViewport", () => {
     const viewport = screen.getByRole("status").parentElement!;
     const z = Number(/\bz-\[(\d+)\]/.exec(viewport.className)?.[1] ?? /\bz-(\d+)\b/.exec(viewport.className)?.[1]);
     expect(z).toBeGreaterThan(50);
+  });
+});
+
+describe("DataTable sorting by keyboard", () => {
+  it("sorts with a header button and reports the direction in aria-sort", () => {
+    const rows = [{ n: "Oak" }, { n: "Maple" }];
+    render(
+      <DataTable
+        columns={[{ key: "n", header: "House", render: (r) => r.n, sortValue: (r) => r.n }]}
+        rows={rows}
+        rowKey={(r) => r.n}
+      />,
+    );
+    const header = screen.getByRole("columnheader", { name: /House/ });
+    const sort = screen.getByRole("button", { name: /House/ });
+    expect(header).toHaveAttribute("aria-sort", "none");
+
+    fireEvent.click(sort); // Enter/Space on a button fire click
+    expect(header).toHaveAttribute("aria-sort", "ascending");
+    expect(screen.getAllByRole("cell").map((c) => c.textContent)).toEqual(["Maple", "Oak"]);
+    fireEvent.click(sort);
+    expect(header).toHaveAttribute("aria-sort", "descending");
+  });
+
+  it("leaves columns without sortValue as plain headers", () => {
+    render(<DataTable columns={[{ key: "n", header: "Size", render: () => "1" }]} rows={[{}]} rowKey={() => "r"} />);
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Size" })).not.toHaveAttribute("aria-sort");
+  });
+});
+
+describe("ConfirmDialog keyboard focus", () => {
+  function Harness({ open, onCancel = () => {} }: { open: boolean; onCancel?: () => void }) {
+    return (
+      <>
+        <button type="button">Delete house</button>
+        <ConfirmDialog open={open} title="Delete house?" message="Gone for good." onConfirm={() => {}} onCancel={onCancel} />
+      </>
+    );
+  }
+
+  it("focuses Cancel, keeps Tab inside, and gives focus back on close", () => {
+    const { rerender } = render(<Harness open={false} />);
+    const opener = screen.getByRole("button", { name: "Delete house" });
+    opener.focus();
+
+    rerender(<Harness open />);
+    const dialog = screen.getByRole("dialog", { name: "Delete house?" });
+    expect(dialog).toHaveAccessibleDescription("Gone for good.");
+    const cancel = screen.getByRole("button", { name: "Cancel" });
+    const confirm = screen.getByRole("button", { name: "Confirm" });
+    expect(cancel).toHaveFocus();
+
+    confirm.focus();
+    fireEvent.keyDown(confirm, { key: "Tab" });
+    expect(cancel).toHaveFocus();
+    fireEvent.keyDown(cancel, { key: "Tab", shiftKey: true });
+    expect(confirm).toHaveFocus();
+
+    rerender(<Harness open={false} />);
+    expect(opener).toHaveFocus();
+  });
+
+  it("closes on Escape", () => {
+    const onCancel = vi.fn();
+    render(<Harness open onCancel={onCancel} />);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(onCancel).toHaveBeenCalled();
   });
 });
