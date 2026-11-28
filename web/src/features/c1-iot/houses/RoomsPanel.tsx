@@ -14,7 +14,7 @@ import {
   type RoomType,
 } from "../../../api/c1";
 import { Button, ConfirmDialog, useToasts } from "../../../shared";
-import { Card, inputClass, selectClass } from "../components";
+import { Card, inputClass, returnFocus, selectClass } from "../components";
 import { errorText, labelText, serverFieldErrors } from "../format";
 
 export function RoomsPanel({ house }: { house: House }) {
@@ -76,6 +76,7 @@ export function RoomsPanel({ house }: { house: House }) {
                 onDone={() => {
                   setEditing(null);
                   refresh();
+                  returnFocus(`rename-${room.room_id}`);
                 }}
               />
             ) : (
@@ -85,9 +86,11 @@ export function RoomsPanel({ house }: { house: House }) {
                   <span className="ml-2 text-xs text-muted">{labelText(room.room_type)}</span>
                 </span>
                 <span className="flex gap-2">
-                  <Button variant="ghost" onClick={() => setEditing(room)}>
-                    Rename
-                  </Button>
+                  <span data-focus-return={`rename-${room.room_id}`}>
+                    <Button variant="ghost" onClick={() => setEditing(room)}>
+                      Rename
+                    </Button>
+                  </span>
                   <Button variant="ghost" onClick={() => setDeleting(room)}>
                     Delete
                   </Button>
@@ -189,6 +192,7 @@ function RoomEditRow({ room, onDone }: { room: Room; onDone: () => void }) {
       >
         <input
           aria-label="Room name"
+          autoFocus
           className={`${inputClass} w-48`}
           value={name}
           maxLength={60}

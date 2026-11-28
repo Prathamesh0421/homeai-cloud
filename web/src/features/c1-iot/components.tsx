@@ -3,7 +3,7 @@
  * is a stub, so C1 keeps its own versions here (icon + word, never colour alone).
  */
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Mic, Play, Video } from "lucide-react";
 import { INPUT } from "../../shared/tokens";
@@ -120,9 +120,14 @@ export function KindLabel({ kind }: { kind: MediaKind }) {
   );
 }
 
-/** Fetches a fresh presigned URL when the user presses Play, then shows the native player. */
-export function ClipPlayback({ mediaId, kind }: { mediaId: string; kind: MediaKind }) {
+/**
+ * Fetches a fresh presigned URL when the user presses Play, then shows the native player.
+ * ``label`` names the clip for screen readers (a table has one Play per row); keyboard focus
+ * moves to the player that replaces the button.
+ */
+export function ClipPlayback({ mediaId, kind, label }: { mediaId: string; kind: MediaKind; label?: string }) {
   const [url, setUrl] = useState<string | null>(null);
+  const player = useRef<HTMLMediaElement | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -139,11 +144,35 @@ export function ClipPlayback({ mediaId, kind }: { mediaId: string; kind: MediaKi
     }
   }
 
+  useEffect(() => {
+    // url is only ever set by pressing Play, so the player takes over the button's focus.
+    if (url) player.current?.focus();
+  }, [url]);
+
   if (url) {
+    const name = label ? `Recording: ${label}` : "Recording";
     return kind === "video" ? (
-      <video src={url} controls autoPlay className="max-h-48 w-full max-w-sm rounded" onError={() => setUrl(null)} />
+      <video
+        ref={(el) => (player.current = el)}
+        src={url}
+        controls
+        autoPlay
+        tabIndex={0}
+        aria-label={name}
+        className="max-h-48 w-full max-w-sm rounded"
+        onError={() => setUrl(null)}
+      />
     ) : (
-      <audio src={url} controls autoPlay className="w-64" onError={() => setUrl(null)} />
+      <audio
+        ref={(el) => (player.current = el)}
+        src={url}
+        controls
+        autoPlay
+        tabIndex={0}
+        aria-label={name}
+        className="w-64"
+        onError={() => setUrl(null)}
+      />
     );
   }
   return (
@@ -156,7 +185,7 @@ export function ClipPlayback({ mediaId, kind }: { mediaId: string; kind: MediaKi
         }}
         disabled={loading}
         className="inline-flex items-center gap-1 rounded-md border border-border-strong px-2 py-1 text-xs font-medium text-ink hover:bg-surface-2 disabled:opacity-50"
-        aria-label="Play clip"
+        aria-label={label ? `Play clip: ${label}` : "Play clip"}
       >
         {loading ? (
           "Loading…"
@@ -204,4 +233,24 @@ export function TopLabel({ clip }: { clip: ClipSummary }) {
   if (needsDetail && detail.isPending) return <span className="text-xs text-muted">…</span>;
   if (!label || label === "none") return <span className="text-muted">No label</span>;
   return <span className="font-medium text-ink">{labelText(label)}</span>;
+}
+
+/**
+ * Moves keyboard focus once React has re-rendered: back to the button that opened a form when
+ * the form closes (the button is hidden while the form is open, so focus would fall to <body>).
+ * Mark the target with ``data-focus-return="<name>"`` on it or a wrapper of it.
+ */
+export function returnFocus(name: string): void {
+  const attempt = () => {
+    const target = document.querySelector<HTMLElement>(`[data-focus-return="${name}"]`);
+    (target?.matches("button, a, input, select") ? target : target?.querySelector<HTMLElement>("button, a"))?.focus();
+  };
+  requestAnimationFrame(attempt);
+  // A refetch can re-mount the target (e.g. the config card after a save): try again shortly,
+  // but only while focus is lost, never taking it from wherever the user has moved on to.
+  for (const ms of [300, 1000]) {
+    setTimeout(() => {
+      if (document.activeElement === document.body) attempt();
+    }, ms);
+  }
 }

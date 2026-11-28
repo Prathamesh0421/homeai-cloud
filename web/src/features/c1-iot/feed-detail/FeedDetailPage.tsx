@@ -270,7 +270,11 @@ function RecentClips({ feedId }: { feedId: string }) {
     { key: "status", header: "Status", render: (c) => <ClipStatusChip status={c.status} /> },
     { key: "label", header: "Top label", render: (c) => <TopLabel clip={c} /> },
     { key: "size", header: "Size", render: (c) => formatBytes(c.size) },
-    { key: "play", header: "", render: (c) => <ClipPlayback mediaId={c.media_id} kind={c.media_kind} /> },
+    {
+      key: "play",
+      header: "",
+      render: (c) => <ClipPlayback mediaId={c.media_id} kind={c.media_kind} label={`captured ${formatWhen(c.captured_at)}`} />,
+    },
   ];
 
   return (

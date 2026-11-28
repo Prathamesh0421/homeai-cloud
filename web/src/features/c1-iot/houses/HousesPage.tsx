@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { c1Keys, deleteHouse, listHouses, type House } from "../../../api/c1";
 import { useAuth } from "../../../auth/AuthProvider";
 import { Button, ConfirmDialog, DataTable, EmptyState, ErrorState, useToasts, type Column } from "../../../shared";
+import { returnFocus } from "../components";
 import { errorText } from "../format";
 import { HouseForm } from "./HouseForm";
 import { RoomsPanel } from "./RoomsPanel";
@@ -78,9 +79,11 @@ export default function HousesPage() {
       className: "text-right",
       render: (h) => (
         <span className="inline-flex gap-1" onClick={(e) => e.stopPropagation()}>
-          <Button variant="ghost" onClick={() => setForm({ house: h })}>
-            Edit
-          </Button>
+          <span data-focus-return={`edit-${h.house_id}`}>
+            <Button variant="ghost" onClick={() => setForm({ house: h })}>
+              Edit
+            </Button>
+          </span>
           <Button variant="ghost" onClick={() => setDeleting(h)}>
             Delete
           </Button>
@@ -95,7 +98,11 @@ export default function HousesPage() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Houses and Rooms</h1>
-        {!form && <Button onClick={() => setForm({})}>+ Add house</Button>}
+        {!form && (
+          <span data-focus-return="add-house">
+            <Button onClick={() => setForm({})}>+ Add house</Button>
+          </span>
+        )}
       </div>
 
       {form && (
@@ -103,10 +110,14 @@ export default function HousesPage() {
           key={form.house?.house_id ?? "new"}
           house={form.house}
           needsTenant={session?.role === "cloud_staff"}
-          onCancel={() => setForm(null)}
+          onCancel={() => {
+            setForm(null);
+            returnFocus(form.house ? `edit-${form.house.house_id}` : "add-house");
+          }}
           onSaved={(h) => {
             toasts.push({ tone: "success", message: form.house ? `House “${h.name}” saved.` : `House “${h.name}” added.` });
             setForm(null);
+            returnFocus(form.house ? `edit-${form.house.house_id}` : "add-house");
             if (!form.house) setExpanded(h.house_id);
             refresh();
           }}

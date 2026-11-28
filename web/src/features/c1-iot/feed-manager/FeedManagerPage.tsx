@@ -23,6 +23,7 @@ import {
   FEED_STATUS_LABEL,
   FeedStatusChip,
   KindLabel,
+  returnFocus,
   selectClass,
 } from "../components";
 import { AddFeedPanel } from "./AddFeedPanel";
@@ -125,16 +126,24 @@ export default function FeedManagerPage() {
     <div className="space-y-4">
       <div className="flex items-baseline justify-between">
         <h1 className="text-2xl font-semibold tracking-tight text-ink">Camera Feed Manager</h1>
-        {!adding && <Button onClick={() => setAdding(true)}>+ Add feed</Button>}
+        {!adding && (
+          <span data-focus-return="add-feed">
+            <Button onClick={() => setAdding(true)}>+ Add feed</Button>
+          </span>
+        )}
       </div>
 
       {adding && (
         <AddFeedPanel
           houses={houseList}
           defaultHouseId={filters.houseId}
-          onCancel={() => setAdding(false)}
+          onCancel={() => {
+            setAdding(false);
+            returnFocus("add-feed");
+          }}
           onCreated={(feed) => {
             setAdding(false);
+            returnFocus("add-feed");
             toasts.push({ tone: "success", message: `Feed “${feed.name}” added (provisioned, disabled).` });
             void queryClient.invalidateQueries({ queryKey: ["c1", "feeds"] });
           }}

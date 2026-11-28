@@ -86,7 +86,7 @@ export function AddFeedPanel({ houses, defaultHouseId, onCreated, onCancel }: Ad
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Name" name="feed-name" error={errors.name}>
-          <input id="feed-name" className={inputClass} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+          <input id="feed-name" autoFocus className={inputClass} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Kind" name="feed-kind" error={errors.media_kind}>
           <select id="feed-kind" className={inputClass} value={kind} onChange={(e) => setKind(e.target.value as MediaKind)}>

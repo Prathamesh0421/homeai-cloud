@@ -15,7 +15,7 @@ import {
   type Sensitivity,
 } from "../../../api/c1";
 import { Button, DataTable, Field, useToasts, type Column } from "../../../shared";
-import { Card, inputClass } from "../components";
+import { Card, inputClass, returnFocus } from "../components";
 import { errorText, formatWhen, serverFieldErrors } from "../format";
 
 export interface ConfigCardProps {
@@ -49,6 +49,7 @@ export function ConfigCard({ feed, editing, onEditingChange, readOnly }: ConfigC
     onSuccess: (res) => {
       toasts.push({ tone: "success", message: `Config saved as version ${res.config_version}.` });
       onEditingChange(false);
+      returnFocus("edit-config");
       refresh();
     },
   });
@@ -80,9 +81,11 @@ export function ConfigCard({ feed, editing, onEditingChange, readOnly }: ConfigC
       title={`Configuration · v${feed.config_version}`}
       actions={
         !editing && !readOnly ? (
-          <Button variant="secondary" onClick={startEdit}>
-            Edit config
-          </Button>
+          <span data-focus-return="edit-config">
+            <Button variant="secondary" onClick={startEdit}>
+              Edit config
+            </Button>
+          </span>
         ) : undefined
       }
     >
@@ -98,6 +101,7 @@ export function ConfigCard({ feed, editing, onEditingChange, readOnly }: ConfigC
             <Field label={`Capture interval (s, ${INTERVAL_MIN}–${INTERVAL_MAX})`} name="cfg-interval" error={errors.capture_interval_s}>
               <input
                 id="cfg-interval"
+                autoFocus
                 type="number"
                 className={inputClass}
                 value={intervalS}
@@ -134,7 +138,13 @@ export function ConfigCard({ feed, editing, onEditingChange, readOnly }: ConfigC
             </p>
           )}
           <div className="flex justify-end gap-2">
-            <Button variant="secondary" onClick={() => onEditingChange(false)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                onEditingChange(false);
+                returnFocus("edit-config");
+              }}
+            >
               Cancel
             </Button>
             <Button type="submit" disabled={save.isPending}>
