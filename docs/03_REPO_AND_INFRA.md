@@ -237,6 +237,10 @@ From 21 Nov 2026 the AWS layout grows to an ALB, Auto Scaling groups (API and wo
 Atlas, ECR images and CloudWatch, written as Terraform in `infra/aws/terraform/` and applied by Mohit; on one host
 `infra/docker-compose.scale.yml` runs several copies of each service behind Caddy. Tasks, owners and checks:
 `08_FINAL_DELIVERABLES.md` §4–5.
+On one host: `docker compose -f infra/docker-compose.yml -f infra/docker-compose.scale.yml --profile c1
+--profile c3 --profile gateway up -d --scale c1-iot=2 --scale c2-alerts=2 --scale c3-data=2 --scale
+c3-worker=2 --scale c4-dashboard=2`. The override drops the APIs' host ports 8001–8004 (Vite's dev proxy
+needs the plain dev file), so use the gateway on :8080. Failover drill: `scripts/perf/failover_drill.py`.
 
 ## 9. CI/CD — `.github/workflows/ci.yml`
 - Trigger: pull requests and pushes to `main`.
