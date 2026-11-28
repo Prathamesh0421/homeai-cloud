@@ -114,7 +114,7 @@ export function HouseForm({ house, needsTenant, onSaved, onCancel }: HouseFormPr
           </Field>
         )}
         <Field label="Name" name="house-name" error={errors.name}>
-          <input id="house-name" className={inputClass} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
+          <input id="house-name" autoFocus className={inputClass} value={name} maxLength={80} onChange={(e) => setName(e.target.value)} />
         </Field>
         <Field label="Timezone (IANA)" name="house-timezone" error={errors.timezone}>
           <input

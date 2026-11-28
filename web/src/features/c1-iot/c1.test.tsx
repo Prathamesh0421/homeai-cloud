@@ -262,3 +262,63 @@ describe("Houses and Rooms", () => {
     expect(alert).toHaveTextContent("409 house_not_empty");
   });
 });
+
+describe("Keyboard focus (accessibility pass)", () => {
+  it("moves focus into the Add feed form and back to + Add feed on Cancel", async () => {
+    stubFetch({
+      "GET /api/v1/houses": { body: page([house()]) },
+      [`GET /api/v1/houses/${HOUSE}/rooms`]: { body: ROOMS },
+      "GET /api/v1/feeds": { body: page([feed()]) },
+    });
+    renderPage("/iot/feeds", <FeedManagerPage />, "/iot/feeds");
+    fireEvent.click(await screen.findByRole("button", { name: "+ Add feed" }));
+
+    const form = screen.getByRole("heading", { name: "Add feed" }).closest("form")!;
+    expect(within(form).getByLabelText("Name")).toHaveFocus();
+    fireEvent.click(within(form).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "+ Add feed" })).toHaveFocus());
+  });
+
+  it("returns focus to a house's Edit button after editing it", async () => {
+    stubFetch({ "GET /api/v1/houses": { body: page([house()]) } });
+    renderPage("/iot/houses", <HousesPage />, "/iot/houses");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+
+    expect(screen.getByLabelText("Name")).toHaveFocus();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toHaveFocus());
+  });
+
+  it("names each Play button after its clip and focuses the player", async () => {
+    const MEDIA = "aaaaaaaa-0000-4000-8000-000000000009";
+    stubFetch({
+      ...detailRoutes(feed({ room_id: ROOM })),
+      "GET /api/v1/clips": {
+        body: page([
+          {
+            media_id: MEDIA,
+            feed_id: FEED,
+            feed_name: "Kitchen Mic",
+            media_kind: "audio",
+            captured_at: "2026-11-10T21:31:00Z",
+            uploaded_at: "2026-11-10T21:31:02Z",
+            size: 1000,
+            status: "queued",
+            detection_id: null,
+            top_label: null,
+          },
+        ]),
+      },
+      [`GET /api/v1/clips/${MEDIA}/playback-url`]: {
+        body: { data: { url: "https://s3.test/clip.wav", expires_at: "2026-11-10T21:46:00Z" } },
+      },
+    });
+    renderPage(`/iot/feeds/${FEED}`, <FeedDetailPage />, "/iot/feeds/:feedId");
+
+    const play = await screen.findByRole("button", { name: /^Play clip: captured / });
+    fireEvent.click(play);
+    const player = await screen.findByLabelText(/^Recording: captured /);
+    expect(player.tagName).toBe("AUDIO");
+    await waitFor(() => expect(player).toHaveFocus());
+  });
+});

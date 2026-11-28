@@ -76,7 +76,13 @@ export default function ClipLibraryPage() {
       sortValue: (c) => CLIP_STATUSES.indexOf(c.status),
     },
     { key: "label", header: "Top label", render: (c) => <TopLabel clip={c} /> },
-    { key: "play", header: "", render: (c) => <ClipPlayback mediaId={c.media_id} kind={c.media_kind} /> },
+    {
+      key: "play",
+      header: "",
+      render: (c) => (
+        <ClipPlayback mediaId={c.media_id} kind={c.media_kind} label={`${c.feed_name ?? "feed"}, ${formatWhen(c.captured_at)}`} />
+      ),
+    },
   ];
 
   return (
