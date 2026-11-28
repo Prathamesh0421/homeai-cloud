@@ -17,12 +17,10 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from app.jobs.lock import CONNECTIVITY_LOCK
 from app.services.connectivity import ConnectivityMonitor, MonitorResult
 
 logger = logging.getLogger(__name__)
-
-# One fixed 64-bit key per job ("C1" + job number).
-CONNECTIVITY_LOCK = 0x4331_0000_0001
 
 
 @contextmanager
