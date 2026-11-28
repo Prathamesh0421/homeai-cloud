@@ -114,7 +114,7 @@ everything when idle, destroy after grading (`06` §6).
 | I-7 revocation | Mohit | to do |
 | I-8 worker scale | Renuka | to do (with S-7) |
 | E2E-1 test + `web/e2e/e2e-intrusion.spec.ts` | all (C4 leads the UI spec) | to do |
-| Playwright `c1-feed-setup`, `c3-model-activate`, `c4-login-settings` | Ekant, Renuka, Mohit | to do (`c2-alert-lifecycle` done) |
+| Playwright `c1-feed-setup`, `c3-model-activate`, `c4-login-settings` | Ekant, Renuka, Mohit | `c1-feed-setup` done (C1-14); others to do (`c2-alert-lifecycle` done) |
 | Accessibility pass (keyboard-only) per page | each owner | to do |
 | README: architecture, setup, demo accounts, dataset credits (ESC-50, YAMNet/AudioSet) | Mohit | partly done |
 | Backups: restore drill on AWS | Renuka | to do |
