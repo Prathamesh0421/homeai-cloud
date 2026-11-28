@@ -3,6 +3,11 @@
 Rollup from ``dashboard_stats_daily`` is deferred (C4-09). This path is live-only
 for the requested range window. Failed upstreams return zeros and are listed in
 ``meta.unavailable``.
+
+Upstream calls use C4's own ``c4-dashboard`` service token (contracts §2.3, §4.6), not
+the viewer's token. Service tokens see every tenant upstream, so this module is the
+tenant/house fence: every call carries the viewer's ``tenant_id`` (and, for owners, the
+``house_id``) explicitly.
 """
 
 from __future__ import annotations
@@ -11,8 +16,9 @@ import logging
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Protocol
 
+import httpx
 from homeai_common.auth import Principal
 
 from app.errors import ApiError
@@ -20,6 +26,13 @@ from app.gateways import c1_client, c2_client, c3_client
 from app.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+
+class TokenSource(Protocol):
+    def token(self) -> str: ...
+
+    def invalidate(self) -> None: ...
+
 
 RANGE_HOURS = {"24h": 24, "7d": 24 * 7, "30d": 24 * 30}
 
@@ -56,7 +69,7 @@ def build_summary(
     settings: Settings,
     principal: Principal,
     *,
-    bearer_token: str,
+    token_provider: TokenSource,
     range_key: str = "24h",
     house_id: str | None = None,
     tenant_id: str | None = None,
@@ -66,6 +79,14 @@ def build_summary(
 
     scoped_house = house_id
     scoped_tenant = tenant_id
+    # Without a tenant the service token would read every tenant upstream.
+    if (
+        principal.is_user
+        and principal.role in {"house_owner", "iot_staff"}
+        and not principal.tenant_id
+    ):
+        raise ApiError(403, "forbidden", "account has no tenant")
+
     if principal.is_user and principal.role == "house_owner":
         allowed = set(principal.house_ids or ())
         if house_id and house_id not in allowed:
@@ -87,81 +108,106 @@ def build_summary(
     else:
         raise ApiError(403, "forbidden", "role cannot read dashboard summary")
 
-    cs_tenant = scoped_tenant if principal.role == "cloud_staff" else None
+    def token() -> str:
+        return token_provider.token()
+
+    def upstream(fn: Callable[[str], Any]) -> Callable[[], Any]:
+        def call() -> Any:
+            try:
+                return fn(token())
+            except httpx.HTTPStatusError as exc:
+                # Rotated signing key or revoked client: mint a fresh token next time.
+                if exc.response.status_code == 401:
+                    token_provider.invalidate()
+                raise
+
+        return call
 
     with ThreadPoolExecutor(max_workers=6) as pool:
         f_feeds = pool.submit(
             _safe,
             "c1",
-            lambda: c1_client.fetch_feeds_stats(
-                settings.c1_base_url,
-                bearer_token=bearer_token,
-                tenant_id=scoped_tenant,
-                house_id=scoped_house,
+            upstream(
+                lambda tok: c1_client.fetch_feeds_stats(
+                    settings.c1_base_url,
+                    bearer_token=tok,
+                    tenant_id=scoped_tenant,
+                    house_id=scoped_house,
+                )
             ),
             {},
         )
         f_sev = pool.submit(
             _safe,
             "c2",
-            lambda: c2_client.fetch_alerts_stats(
-                settings.c2_base_url,
-                bearer_token=bearer_token,
-                group_by="severity",
-                from_iso=from_iso,
-                to_iso=to_iso,
-                house_id=scoped_house,
-                tenant_id=cs_tenant,
+            upstream(
+                lambda tok: c2_client.fetch_alerts_stats(
+                    settings.c2_base_url,
+                    bearer_token=tok,
+                    group_by="severity",
+                    from_iso=from_iso,
+                    to_iso=to_iso,
+                    house_id=scoped_house,
+                    tenant_id=scoped_tenant,
+                )
             ),
             [],
         )
         f_day = pool.submit(
             _safe,
             "c2",
-            lambda: c2_client.fetch_alerts_stats(
-                settings.c2_base_url,
-                bearer_token=bearer_token,
-                group_by="day",
-                from_iso=from_iso,
-                to_iso=to_iso,
-                house_id=scoped_house,
-                tenant_id=cs_tenant,
+            upstream(
+                lambda tok: c2_client.fetch_alerts_stats(
+                    settings.c2_base_url,
+                    bearer_token=tok,
+                    group_by="day",
+                    from_iso=from_iso,
+                    to_iso=to_iso,
+                    house_id=scoped_house,
+                    tenant_id=scoped_tenant,
+                )
             ),
             [],
         )
         f_recent = pool.submit(
             _safe,
             "c2",
-            lambda: c2_client.fetch_recent_alerts(
-                settings.c2_base_url,
-                bearer_token=bearer_token,
-                house_id=scoped_house,
-                tenant_id=cs_tenant,
+            upstream(
+                lambda tok: c2_client.fetch_recent_alerts(
+                    settings.c2_base_url,
+                    bearer_token=tok,
+                    house_id=scoped_house,
+                    tenant_id=scoped_tenant,
+                )
             ),
             [],
         )
         f_open = pool.submit(
             _safe,
             "c2",
-            lambda: c2_client.fetch_open_alert_count(
-                settings.c2_base_url,
-                bearer_token=bearer_token,
-                house_id=scoped_house,
-                tenant_id=cs_tenant,
+            upstream(
+                lambda tok: c2_client.fetch_open_alert_count(
+                    settings.c2_base_url,
+                    bearer_token=tok,
+                    house_id=scoped_house,
+                    tenant_id=scoped_tenant,
+                )
             ),
             0,
         )
         f_det = pool.submit(
             _safe,
             "c3",
-            lambda: c3_client.fetch_detections_stats(
-                settings.c3_base_url,
-                bearer_token=bearer_token,
-                group_by="top_label",
-                from_iso=from_iso,
-                to_iso=to_iso,
-                house_id=scoped_house,
-                tenant_id=cs_tenant,
+            upstream(
+                lambda tok: c3_client.fetch_detections_stats(
+                    settings.c3_base_url,
+                    bearer_token=tok,
+                    group_by="top_label",
+                    from_iso=from_iso,
+                    to_iso=to_iso,
+                    house_id=scoped_house,
+                    tenant_id=scoped_tenant,
+                )
             ),
             ([], 0),
         )
