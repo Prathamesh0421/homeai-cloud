@@ -41,9 +41,12 @@ data "aws_iam_policy_document" "github_actions_assume" {
     condition {
       test     = "StringLike"
       variable = "token.actions.githubusercontent.com:sub"
+      # Classic sub + GitHub "immutable" OIDC sub (org@id/repo@id:...).
       values = [
         "repo:${var.github_org}/${var.github_repo}:ref:refs/heads/main",
         "repo:${var.github_org}/${var.github_repo}:environment:aws",
+        "repo:${var.github_org}@*/${var.github_repo}@*:ref:refs/heads/main",
+        "repo:${var.github_org}@*/${var.github_repo}@*:environment:aws",
       ]
     }
   }
